@@ -42,8 +42,11 @@ Write-Host "[5/7] 필요한 패키지 설치(인터넷)..." -ForegroundColor Cya
 
 Write-Host "[6/7] 앱 파일 복사..." -ForegroundColor Cyan
 Copy-Item (Join-Path $repo "backend") (Join-Path $out "backend") -Recurse
-# 개발 흔적 제거
-Remove-Item (Join-Path $out "backend\.venv"), (Join-Path $out "backend\data"), (Join-Path $out "backend\__pycache__") -Recurse -Force -ErrorAction SilentlyContinue
+# 개발 흔적 제거. 키가 들어 있는 두 곳을 반드시 뺀다:
+#   .env       — 예전부터 쓰던 자리
+#   data\      — v0.22 부터 화면에서 넣은 AI 키가 workbench.db 에 들어간다.
+#                 자동 백업(data/backups)에도 같은 것이 들어 있으므로 폴더째 뺀다.
+Remove-Item (Join-Path $out "backend\.venv"), (Join-Path $out "backend\data"), (Join-Path $out "backend\__pycache__"), (Join-Path $out "backend\.env") -Recurse -Force -ErrorAction SilentlyContinue
 Get-ChildItem (Join-Path $out "backend") -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path (Join-Path $out "frontend") | Out-Null
 Copy-Item (Join-Path $repo "frontend\dist") (Join-Path $out "frontend\dist") -Recurse
@@ -57,6 +60,20 @@ Write-Host "[7/7] 실행 런처/설명서 배치..." -ForegroundColor Cyan
 Copy-Item (Join-Path $PSScriptRoot "실행.bat") (Join-Path $out "실행.bat")
 if (Test-Path (Join-Path $PSScriptRoot "사용설명.txt")) {
     Copy-Item (Join-Path $PSScriptRoot "사용설명.txt") (Join-Path $out "사용설명.txt")
+}
+# 담당자용 사용설명서. 원본은 frontend/public 에 있고 빌드 때 dist 로 복사되므로
+# 프로그램 화면의 '사용설명서' 버튼으로 열린다. 여기서는 폴더에서 바로 두 번 눌러
+# 열 수 있도록 꾸러미 맨 위에 사본을 하나 더 둔다.
+# (위 '사용설명.txt' 는 꾸러미를 만들고 반입하는 관리자용이라 대상이 다르다.)
+$manual = Join-Path $repo "frontend\dist\사용설명서.html"
+if (Test-Path $manual) {
+    Copy-Item $manual (Join-Path $out "사용설명서.html")
+} else {
+    Write-Host "  경고: 사용설명서.html 이 frontend\dist 에 없습니다. 'npm run build' 를 먼저 하세요." -ForegroundColor Yellow
+}
+# 버전 안내도 함께 넣어, 지금 쓰는 것이 무엇인지 폴더에서 바로 볼 수 있게 한다.
+if (Test-Path (Join-Path $repo "VERSION.txt")) {
+    Copy-Item (Join-Path $repo "VERSION.txt") (Join-Path $out "업데이트_내역.txt")
 }
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 

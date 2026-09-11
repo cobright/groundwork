@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 from ..db import connect, now
+from ..services.progress import fact_lines
 from .dashboard import compute_metrics
 
 router = APIRouter(prefix="/api", tags=["report"])
@@ -22,52 +23,28 @@ def _get_setting(c, key, default=""):
 
 class SettingsIn(BaseModel):
     author_name: str | None = None
+    author_dept: str | None = None      # 보고전 머리글에 들어가는 부서명
 
 
 @router.get("/settings")
 def get_settings():
     with connect() as c:
-        return {"author_name": _get_setting(c, "author_name", "")}
+        return {"author_name": _get_setting(c, "author_name", ""),
+                "author_dept": _get_setting(c, "author_dept", "")}
 
 
 @router.put("/settings")
 def put_settings(s: SettingsIn):
     with connect() as c:
-        if s.author_name is not None:
-            c.execute(
-                "INSERT INTO settings(key,value) VALUES('author_name',?) "
-                "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (s.author_name.strip(),))
-        return {"author_name": _get_setting(c, "author_name", "")}
+        for key, val in (("author_name", s.author_name), ("author_dept", s.author_dept)):
+            if val is not None:
+                c.execute("INSERT INTO settings(key,value) VALUES(?,?) "
+                          "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, val.strip()))
+        return {"author_name": _get_setting(c, "author_name", ""),
+                "author_dept": _get_setting(c, "author_dept", "")}
 
 
 # ────────────── 진행상황 보고 ──────────────
-def _facts_lines(m):
-    """사람이 읽는 요약 줄들(파일을 직접 열어도 보이도록)."""
-    due = m["due_date"] or "미정"
-    dday = "" if m["d_day"] is None else (f"(마감 {abs(m['d_day'])}일 지남)" if m["d_day"] < 0 else f"(D-{m['d_day']})")
-    lines = [
-        f"단계: {m['stage_label']}  ·  진행률: 본문 {m['bodies_filled']}/{m['outline_total']}",
-        f"마감: {due} {dday}".rstrip(),
-    ]
-    issues = []
-    if m["severe"]:
-        issues.append(f"중대·중요 미해결 검토의견 {m['severe']}건")
-    if m["unresolved"] - m["severe"] > 0:
-        issues.append(f"기타 미해결 의견 {m['unresolved'] - m['severe']}건")
-    if m["need_flags"]:
-        issues.append(f"확인 필요 표시 {m['need_flags']}건")
-    if m["ev_unconfirmed"]:
-        issues.append(f"미확정 근거 {m['ev_unconfirmed']}건")
-    if m["ev_changed"]:
-        issues.append(f"변경된 근거 {m['ev_changed']}건")
-    if m["req_open"]:
-        issues.append(f"자료 회신 대기 {m['req_open']}건")
-    if m["req_overdue"]:
-        issues.append(f"요청 마감 초과 {m['req_overdue']}건")
-    lines.append("미해결: " + (", ".join(issues) if issues else "없음"))
-    return lines
-
-
 @router.get("/projects/{pid}/report/preview")
 def report_preview(pid: int):
     """보고 팝업에 채워질 '자동 집계 사실'과 작성자 이름을 돌려준다(읽기 전용)."""
@@ -81,7 +58,7 @@ def report_preview(pid: int):
         "author": author,
         "generated_at": now(),
         "facts": m,
-        "facts_lines": _facts_lines(m),
+        "facts_lines": fact_lines(m),
         "status_choices": STATUS_CHOICES,
     }
 
@@ -110,7 +87,7 @@ def report_export(pid: int, body: ReportExportIn):
     if body.status_label:
         human.append(f"상태: {body.status_label}")
     human.append("")
-    human += _facts_lines(m)
+    human += fact_lines(m)
     human.append("")
     human.append("[ 보고자 의견 ]")
     human.append(body.message.strip() or "(없음)")

@@ -19,23 +19,38 @@ button{font-family:inherit;font-size:13px;cursor:pointer}
 input,textarea,select{font-family:inherit;font-size:13px;color:var(--ink)}
 .app{height:100%;display:flex;flex-direction:column}
 
-header{background:var(--band);border-bottom:1px solid #16302F;padding:10px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;color:var(--band-ink)}
+/* 헤더는 두 줄. 층위가 다른 것을 한 줄에 몰아 넣으면 어수선해진다.
+   윗줄(work) = 지금 다루는 업무가 무엇인가 · 아랫줄(nav) = 어느 화면으로 가는가 */
+header{background:var(--band);border-bottom:1px solid #16302F;padding:9px 20px 0;
+  display:flex;flex-direction:column;color:var(--band-ink)}
+.hrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+.hrow.work{padding-bottom:9px}
+.hrow.nav{gap:8px;padding:7px 0;border-top:1px solid rgba(255,255,255,.07)}
+.hrow.nav .tabs{margin-left:0}
+.hsep{width:1px;align-self:stretch;margin:2px 4px;background:rgba(255,255,255,.13);flex:none}
+/* 사용설명서는 도움말이라 조용히 끝자리에 둔다 — 버튼처럼 보이면 시선을 뺏는다 */
+.hrow.nav .help{margin-left:auto;color:#9DB6B3;font-size:12.5px;text-decoration:none;
+  padding:5px 9px;border-radius:var(--radius);border:1px solid transparent;white-space:nowrap}
+.hrow.nav .help:hover{color:#EAF0EF;border-color:#3C605E;background:#254846}
+.hrow.nav .help:focus-visible{outline:2px solid var(--accent-line);outline-offset:1px}
 .brand{font-family:var(--sans);font-weight:700;font-size:16px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;color:#fff}
 .brand b{font-weight:800}
 .brand .logo{background:var(--stamp);color:#fff;font-weight:800;border-radius:6px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.25);letter-spacing:0}
 .projbar{display:flex;gap:8px;align-items:center;flex:1;min-width:240px}
+.hrow.work>.btn{flex:none}
+.hrow.work>.btn:first-of-type{margin-left:auto}
 .projbar select,.projbar input{border:1px solid #33514F;border-radius:var(--radius);padding:7px 10px;background:#254846;color:#EAF0EF}
 .projbar select{min-width:150px}
 .projbar input{flex:1;max-width:280px}
 .projbar select:focus,.projbar input:focus{outline:2px solid var(--accent-line);outline-offset:0}
 .projbar .duein{color:#CDDAD8}
-.flag{font-size:12px;color:#9DB6B3}
-.flag.on{color:#F0D9A8}
 header .btn{background:#2C4F4D;border:1px solid #3C605E;color:#EAF0EF}
 header .btn:hover{background:#35605D}
 header .btn.dashbtn.on{background:var(--stamp);border-color:var(--stamp);color:#fff}
-.flag{font-size:12px;color:var(--faint);min-width:56px}
-.flag.on{color:var(--accent)}
+/* 헤더의 저장 표시. 예전엔 아래에서 밝은 화면용 색(--faint/--accent)으로 덮어써
+   어두운 띠 위에서 거의 보이지 않았다. 띠 위에서 읽히는 색으로 한 번만 정의한다. */
+.flag{font-size:12px;color:#9DB6B3;min-width:56px}
+.flag.on{color:#F0D9A8}
 
 .btn{border:1px solid var(--line);background:var(--field);color:var(--ink);border-radius:var(--radius);padding:7px 13px;font-weight:600;font-family:inherit;transition:background .12s,border-color .12s}
 .btn:hover{border-color:var(--accent-line);background:var(--accent-soft)}
@@ -47,26 +62,39 @@ header .btn.dashbtn.on{background:var(--stamp);border-color:var(--stamp);color:#
 .btn.ghost:hover{background:var(--line-soft);color:var(--ink)}
 .btn.stamp{color:var(--stamp)}
 
-main{flex:1;display:grid;grid-template-columns:280px minmax(0,1fr) 320px;min-height:0}
+/* 칸 폭은 Columns.jsx 가 CSS 변수(--col-l/--col-r)로 넣는다(끌어서 조절). 인라인으로 grid 를 박으면
+   좁은 화면 규칙(세로로 쌓기)을 이겨 버리므로 변수로만 건넨다.
+   옆 칸 최소값 200·240 은 Columns.jsx 의 LIMITS, 가운데 360 은 CENTER_MIN 과 같아야 한다. */
+main{flex:1;display:grid;grid-template-columns:minmax(var(--col-l-min,200px),var(--col-l,280px)) minmax(360px,1fr) minmax(var(--col-r-min,240px),var(--col-r,320px));min-height:0;position:relative}
 .col{overflow:auto;padding:18px 18px 60px}
 .col.left{border-right:1px solid var(--line)}
 .col.right{border-left:1px solid var(--line);background:#FCFCFB}
+/* 도구 막대는 목차와 함께 떠내려가면 안 된다. 칸 전체를 스크롤 통으로 두면
+   항목을 고른 뒤 버튼을 찾으러 위로 올라갔다 내려오는 왕복이 생긴다.
+   → 칸은 머리(고정)와 몸(스크롤)로 나누고, 스크롤은 목록만 한다. */
+.col.pane{overflow:hidden;display:flex;flex-direction:column;padding-bottom:0}
+.pane-head{flex:none}
+.pane-body{flex:1 1 auto;min-height:0;overflow:auto;padding:8px 0 60px}
 .eyebrow{font-size:11px;letter-spacing:.1em;color:var(--accent);margin:0 0 10px;font-weight:700}
 .eyebrow.mt{margin-top:24px}.eyebrow.m0{margin:0}
 .lbl{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
 .wide{width:100%;border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px;background:var(--field)}
-.rowbtns{display:flex;gap:8px;margin-top:8px}.rowbtns .btn{flex:1;text-align:center}.rowbtns input{flex:1}
+/* 자식 종류(button/input/select)에 따라 규칙이 갈리면, width:100% 인 select 가
+   flex-basis:0 인 input 을 폭 0으로 밀어낸다(집필카드 '예상 분량' 입력 불가 사고).
+   무엇이 들어와도 균등하게 나눈다. */
+.rowbtns{display:flex;gap:8px;margin-top:8px}
+.rowbtns>*{flex:1 1 0;min-width:0}
+.rowbtns .btn{text-align:center}
 
-.block{border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px;background:var(--field)}
-.block h4{margin:0 0 3px;font-size:13px}.block p{margin:0 0 8px;color:var(--muted);font-size:12px}
 .chk{display:flex;gap:7px;align-items:center;font-size:12px;color:var(--muted);margin:3px 0;cursor:pointer}
-.combine{border:1px dashed var(--accent-line);background:var(--accent-soft);color:var(--accent);border-radius:var(--radius);padding:6px 10px;width:100%;margin-top:6px}
-.combine:hover{background:#dbe8e8}
 
 .chead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px}
 .count{font-size:12px;color:var(--muted)}
-.toolbar{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 14px;padding-bottom:14px;border-bottom:1px solid var(--line-soft)}
+.toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:10px 0 0;padding-bottom:14px;border-bottom:1px solid var(--line-soft)}
 .toolbar .btn{padding:6px 10px}
+/* 하는 일이 다른 것을 붙여 두면 한 덩어리로 읽힌다 — 추가 · 이동 · 삭제로 끊는다 */
+.toolbar .tbsep{width:1px;align-self:stretch;margin:2px 3px;background:var(--line);flex:none}
+.toolbar .btn.stamp{margin-left:auto}
 .tree,.tree ul{list-style:none;margin:0;padding:0}
 .tree ul{padding-left:22px}
 .row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius);border:1px solid transparent;margin:2px 0}
@@ -88,7 +116,14 @@ main{flex:1;display:grid;grid-template-columns:280px minmax(0,1fr) 320px;min-hei
 .pnote{margin-top:18px;border-top:1px solid var(--line-soft);padding-top:12px;font-size:12px;color:var(--muted);line-height:1.5}
 .pnote b{color:var(--stamp)}
 
-@media (max-width:1000px){ main{grid-template-columns:1fr} .col.left,.col.right{border:none;border-top:1px solid var(--line)} }
+/* 좁은 화면에서는 칸이 세로로 쌓인다 → 칸마다 스크롤하지 않고 화면 전체가 스크롤한다.
+   이때 머리 고정을 그대로 두면 칸 높이가 눌려 목록이 잘린다. */
+@media (max-width:1000px){
+  main{grid-template-columns:1fr;overflow:auto}
+  .col.left,.col.right{border:none;border-top:1px solid var(--line)}
+  .col.pane{overflow:visible;padding-bottom:60px}
+  .pane-body{overflow:visible;padding-bottom:0}
+}
 
 /* ── 상단 탭 ── */
 .tabs{display:flex;gap:2px;margin-left:4px;background:#1A3231;border:1px solid #16302F;border-radius:8px;padding:3px}
@@ -97,11 +132,49 @@ main{flex:1;display:grid;grid-template-columns:280px minmax(0,1fr) 320px;min-hei
 .tab.on{background:#EDF1F2;color:var(--band);font-weight:700}
 
 /* ── 자료실/근거표 ── */
-.rr{flex:1;display:grid;grid-template-columns:300px minmax(0,1fr) 340px;min-height:0}
+.rr{flex:1;display:grid;grid-template-columns:minmax(var(--col-l-min,200px),var(--col-l,300px)) minmax(360px,1fr) minmax(var(--col-r-min,240px),var(--col-r,340px));min-height:0;position:relative}
+.rr.final{grid-template-columns:minmax(var(--col-l-min,200px),var(--col-l,300px)) minmax(360px,1fr)}
 .rr .col{overflow:auto;padding:18px 18px 60px}
 .rr-empty{padding:40px;color:var(--faint);text-align:center}
 .rr-err{grid-column:1/-1;background:var(--stamp-soft);color:var(--stamp);border-bottom:1px solid #E4C4C5;padding:8px 16px;cursor:pointer;font-size:13px}
 .rr-err .x{float:right;opacity:.6}
+
+/* ── 칸 폭 조절 손잡이 (Columns.jsx) ──
+   손잡이는 경계선에서 오른쪽으로 치우쳐 둔다 — 왼쪽 칸의 스크롤바를 가리지 않게. */
+.colgrip{position:absolute;bottom:0;width:10px;margin-left:-2px;z-index:6;cursor:col-resize;touch-action:none;outline:none}
+/* 경계선 줄(::after)은 클릭을 받지 않는다 — 받으면 접기 단추 한가운데를 눌러도 손잡이가 눌려 끌기가 된다(실제로 그랬다) */
+.colgrip::after{content:"";position:absolute;top:0;bottom:0;left:1px;width:3px;border-radius:2px;background:transparent;transition:background .12s;pointer-events:none}
+.colgrip:hover::after,.colgrip.on::after{background:var(--accent-line)}
+.colgrip:focus-visible::after{background:var(--accent)}
+.colfold{position:absolute;z-index:1;top:10px;left:-8px;width:22px;height:22px;padding:0;border-radius:50%;border:1px solid var(--line);
+  background:var(--field);color:var(--muted);font-size:10px;line-height:20px;text-align:center;cursor:pointer;
+  opacity:0;transition:opacity .12s;box-shadow:var(--shadow)}
+.colgrip:hover .colfold,.colgrip:focus-visible .colfold,.colfold:focus-visible{opacity:1}
+.colgrip.on .colfold{opacity:0}
+.colfold:hover{color:var(--accent);border-color:var(--accent-line)}
+body.col-dragging,body.col-dragging *{cursor:col-resize !important;user-select:none}
+/* 접힌 칸은 사라지지 않고 이름이 적힌 띠로 남는다 */
+.colrail{position:absolute;bottom:0;width:30px;z-index:6;display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:12px 0;border:0;background:var(--accent-soft);color:var(--accent);font-family:inherit;font-size:13px;cursor:pointer}
+.colrail.left{left:0;border-right:1px solid var(--accent-line)}
+.colrail.right{right:0;border-left:1px solid var(--accent-line)}
+.colrail:hover{background:#D5E4E2}
+.colrail:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.colrail-lbl{writing-mode:vertical-rl;font-size:12px;font-weight:600;letter-spacing:.08em}
+@media (min-width:1001px){
+  .fold-l>.col.left,.fold-r>.col.right{visibility:hidden;padding:0;border:0;overflow:hidden}
+  .fold-l>.col.center{padding-left:44px}
+  .fold-r>.col.center{padding-right:44px}
+}
+/* 좁은 화면: 목차 편집(main)과 같이 자료·근거·초고·검토·최종본도 세로로 쌓는다(예전엔 세 칸이 눌려 겹쳤다).
+   위 .rr 규칙보다 뒤에 두어야 이긴다. */
+@media (max-width:1000px){
+  .rr,.rr.final{grid-template-columns:1fr;overflow:auto}
+  .rr>.col.left,.rr>.col.center,.rr>.col.right{overflow:visible}
+  .rr .col.wide-preview{grid-column:auto}
+  .colgrip,.colrail{display:none}
+}
+@media (prefers-reduced-motion: reduce){.colgrip::after,.colfold{transition:none}}
 .mb{margin-bottom:8px}.mt{margin-top:22px}.sm{padding:4px 10px;font-size:12px}
 .two{display:flex;gap:8px}.two>*{flex:1;border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px;background:var(--field)}
 
@@ -143,7 +216,10 @@ main{flex:1;display:grid;grid-template-columns:280px minmax(0,1fr) 320px;min-hei
 .staleflag{background:var(--stamp-soft);color:var(--stamp);border-radius:4px;padding:5px 8px;font-size:12px;margin-bottom:10px}
 .ev.changed{border-color:#E4C4C5;box-shadow:0 0 0 2px var(--stamp-soft)}
 .evtop{display:flex;align-items:center;gap:8px;justify-content:space-between}
-.chgflag{font-size:11px;color:var(--stamp);background:var(--stamp-soft);border:1px solid #E4C4C5;border-radius:20px;padding:1px 8px}
+.chgflag{font-size:11px;color:var(--stamp);background:var(--stamp-soft);border:1px solid #E4C4C5;border-radius:20px;padding:1px 4px 1px 8px;display:inline-flex;align-items:center;gap:6px}
+/* '확인함'은 신호를 내리는 별도 행위다 — 근거 수정으로는 꺼지지 않는다 */
+.ackbtn{font-size:11px;font-weight:600;color:#fff;background:var(--stamp);border:0;border-radius:20px;padding:2px 8px;cursor:pointer}
+.ackbtn:hover{filter:brightness(1.12)}
 
 /* ── 초고 작성 화면 ── */
 .dnode{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--radius);border:1px solid transparent;cursor:pointer;margin:2px 0}
@@ -217,7 +293,6 @@ main{flex:1;display:grid;grid-template-columns:280px minmax(0,1fr) 320px;min-hei
 .opkind.k-fact{color:#2F6D72}.opkind.k-tech{color:#9A7526}.opkind.k-struct{color:#5B6b7a}.opkind.k-crit{color:#A4373A}
 
 /* ── 최종본 화면 ── */
-.final .col.left{max-width:320px}
 .okbox{border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);border-radius:var(--radius);padding:12px;font-size:13px}
 .checkitem{border:1px solid var(--line);border-left-width:3px;border-radius:var(--radius);padding:9px 11px;margin-bottom:8px;background:var(--field)}
 .checkitem.crit{border-left-color:var(--stamp)}
@@ -254,6 +329,7 @@ main{flex:1;display:grid;grid-template-columns:280px minmax(0,1fr) 320px;min-hei
 .srcbadge{display:inline-block;font-size:10px;border-radius:20px;padding:0 6px;margin-right:6px;border:1px solid var(--line)}
 .srcbadge.own{color:var(--muted)}
 .srcbadge.lib{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.srcbadge.proj{color:var(--amber);border-color:var(--amber);background:var(--amber-soft)}
 .libview .libnote{background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:var(--radius);padding:9px 11px;font-size:12px;color:var(--accent);margin-bottom:10px}
 .libview .libnote b{color:var(--accent)}
 
@@ -293,6 +369,113 @@ main{flex:1;display:grid;grid-template-columns:280px minmax(0,1fr) 320px;min-hei
 .recvbox{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px}
 .recvbox textarea{width:100%;min-height:60px;border:1px solid var(--line);border-radius:var(--radius);padding:8px;font-size:13px;font-family:inherit}
 .recvbar{display:flex;align-items:center;gap:10px;margin-top:6px}
+/* 회신은 대개 파일로 온다 — 파일 입구를 먼저, 직접 적기는 그 아래로 */
+.recvfile{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:var(--radius);padding:9px 11px}
+.recvfile b{font-size:12px}
+.recvfile .hint{display:block;margin-top:3px}
+.recvfile .filebtn{white-space:nowrap}
+.recvor{font-size:11px;color:var(--faint);margin:8px 0 5px}
+.recvdone a{color:var(--accent)}
+
+/* 파일 고르기 버튼: <input type=file> 을 감춘 라벨(버튼과 같은 모양으로 보이게) */
+.filebtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.filebtn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}
+.filebtn.disabled{opacity:.6;pointer-events:none}
+.filebadge{display:inline-block;font-size:10px;border-radius:20px;padding:0 6px;margin-right:6px;
+  border:1px solid var(--accent-line);color:var(--accent);background:var(--accent-soft)}
+.filenote{font-size:12px;border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:var(--radius);padding:8px 10px;background:var(--field)}
+.filenote a{color:var(--accent);font-weight:600}
+/* 파일에서 읽은 내용은 '원본이 말하는 그대로'다 — 접어 두고, 펼치면 읽기만 한다. */
+.rotext{border:1px solid var(--line-soft);border-radius:var(--radius);padding:6px 8px;background:var(--field)}
+.robody{margin:8px 0 0;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-all;
+  font-family:var(--mono);font-size:12px;line-height:1.65;color:var(--muted);
+  background:var(--line-soft);border-radius:6px;padding:9px 11px}
+/* 담당자 메모: 자료의 내용이 아니라 사람의 말이 들어가는 자리 */
+.memo{min-height:64px;line-height:1.55;resize:vertical}
+.lbl.mt{margin-top:12px}
+.rc-foot .warn{font-size:12px}
+
+/* 되돌리기 — 파괴적 버튼 바로 아래. '돌아갈 자리가 있다'가 보여야 손이 덜 떨린다. */
+.undobox{margin-top:18px;border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:var(--radius);padding:10px 12px;background:var(--field)}
+.undohead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.snaplist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto}
+.snaplist li{border-top:1px solid var(--line-soft);padding-top:8px}
+.snaplist li:first-child{border-top:0;padding-top:0}
+.snapmeta{display:flex;align-items:baseline;gap:8px;font-size:12px}
+.snapmeta b{font-variant-numeric:tabular-nums}
+.snapmeta span{color:var(--faint)}
+.snapsum{font-size:12px;color:var(--muted);margin:2px 0 5px}
+
+/* 설정 — 내 정보 · AI 연결 · 자동 백업. 헤더 끝자리에 조용히 둔다(사용설명서 옆). */
+.hrow.nav .help.setbtn{margin-left:auto;background:transparent;font-family:inherit}
+.hrow.nav .help.setbtn+.help{margin-left:0}
+.setmodal{max-width:640px}
+.setmodal .mono{font-family:var(--mono);font-size:12px;background:var(--line-soft);padding:1px 5px;border-radius:4px}
+.setmodal .lbl input{width:100%;border:1px solid var(--line);border-radius:var(--radius);padding:7px 9px;background:var(--field)}
+.setmodal .lbl select{width:100%;border:1px solid var(--line);border-radius:var(--radius);padding:7px 9px;background:var(--field)}
+.setmodal .lbl input:disabled{background:var(--line-soft);color:var(--faint)}
+.setmodal .subhead{font-size:12px;font-weight:700;color:var(--ink);margin:16px 0 2px}
+.aibox{border:1px solid var(--line-soft);border-radius:var(--radius);padding:10px 12px;margin:8px 0}
+.aibox.on{border-color:var(--accent-line);background:var(--accent-soft)}
+.aibox.on .wide,.aibox.on .lbl input,.aibox.on .lbl select{background:var(--field)}
+/* 등급 한 줄: 회사 · 모델 · (목록·시험) — 버튼은 고른 칸과 같은 줄에 둔다 */
+.tiergrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(0,1.3fr);gap:8px;align-items:end;margin:6px 0 4px}
+.tiergrid .lbl{margin-bottom:0}
+.tiergrid .rowbtns{margin-top:0}
+.tiertasks,.tiernow{font-size:12px;color:var(--muted);margin:0}
+.keyrow{display:flex;gap:8px}.keyrow .wide{flex:1 1 auto;min-width:0}
+.tasktable{width:100%;border-collapse:collapse;font-size:12px;margin:4px 0 6px}
+.tasktable td{border-top:1px solid var(--line-soft);padding:4px 0}
+.tasktable tr:first-child td{border-top:0}
+.tasktable td:last-child{text-align:right;color:var(--accent);font-weight:700;white-space:nowrap}
+@media (max-width:560px){.tiergrid{grid-template-columns:minmax(0,1fr)}}
+.aihead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px}
+.baklist{list-style:none;margin:6px 0 20px;padding:0;font-size:12px}
+.baklist li{display:flex;justify-content:space-between;border-top:1px solid var(--line-soft);padding:4px 0}
+.baklist li:first-child{border-top:0}
+.baklist span{color:var(--faint);font-variant-numeric:tabular-nums}
+
+/* 지금 막힌 곳 — 업무를 가로질러 모은 '할 일' 줄. 상황판에서 가장 먼저 읽히는 자리. */
+.blockbox{border:1px solid var(--line);border-left:3px solid var(--stamp);border-radius:var(--radius-lg);
+  background:var(--field);padding:12px 14px;margin:0 0 20px;box-shadow:var(--shadow)}
+.blockhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px}
+.blocklist{list-style:none;margin:0;padding:0}
+.blocklist li{border-top:1px solid var(--line-soft)}
+.blocklist li:first-child{border-top:0}
+.blockrow{display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;background:none;border:0;
+  padding:7px 4px;border-radius:6px;font-size:13px;color:var(--ink)}
+.blockrow:hover{background:var(--accent-soft)}
+.bkind{flex:none;font-weight:700;font-size:11.5px;border-radius:20px;padding:1px 8px;white-space:nowrap;
+  border:1px solid var(--line);color:var(--muted)}
+.b-r0 .bkind,.b-r2 .bkind{color:var(--stamp);border-color:var(--stamp);background:var(--stamp-soft)}
+.b-r1 .bkind,.b-r3 .bkind{color:var(--amber);border-color:var(--amber);background:var(--amber-soft)}
+.bproj{flex:none;font-weight:600;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bwhat{flex:1;min-width:0;color:var(--muted);font-size:12.5px}
+/* 검토의견이 이미 자료요청으로 넘어갔음을 그 자리에서 보여준다(두 번 요청하지 않게) */
+.reqdone{font-size:12px;color:var(--accent);white-space:nowrap}
+
+/* 정정 공고 비교 — 달라진 것만. 마감일이 맨 위(모르면 제출을 못 한다). */
+.difflist{list-style:none;margin:6px 0 8px;padding:0;display:flex;flex-direction:column;gap:6px}
+.difflist li{display:grid;grid-template-columns:88px minmax(0,1fr);gap:4px 10px;
+  border-top:1px solid var(--line-soft);padding-top:6px;font-size:12.5px}
+.difflist li:first-child{border-top:0;padding-top:0}
+.dkind{grid-row:span 2;align-self:start;font-size:11.5px;font-weight:700;border-radius:20px;
+  padding:1px 8px;text-align:center;border:1px solid var(--line);color:var(--muted)}
+.d-r0 .dkind{color:var(--stamp);border-color:var(--stamp);background:var(--stamp-soft)}
+.d-r1 .dkind{color:var(--amber);border-color:var(--amber);background:var(--amber-soft)}
+.d-r2 .dkind{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.dval{min-width:0;word-break:break-all}
+.dval s{color:var(--faint)}
+.dwhat{color:var(--muted);font-size:12px}
+@media (max-width:640px){ .difflist li{grid-template-columns:1fr} .dkind{grid-row:auto;justify-self:start} }
+@media (max-width:760px){
+  .blockrow{flex-wrap:wrap;gap:4px 8px}
+  .bproj{max-width:100%}
+  .bwhat{flex:1 0 100%}
+}
 .obadge{display:inline-block;font-size:10px;border-radius:20px;padding:0 6px;margin-left:6px;border:1px solid var(--line);color:var(--faint);font-weight:400}
 .obadge.o-draft{color:#9A6a1a;border-color:#E0C089}
 .obadge.o-review{color:#5B6b7a;border-color:#B9C4CE}
@@ -404,3 +587,249 @@ select.st-need{color:#9A6a1a}select.st-sent{color:#3E5F86}select.st-back{color:#
 
 .inboxfolder-cur{font-size:12px;color:var(--muted);margin:-6px 0 12px;padding-left:2px}
 .inboxfolder-cur span{font-family:var(--mono);color:var(--ink)}
+
+/* ── 보류함(캐비넷) ── 진행 중이 아닌 업무를 넣어두는 곳. 삭제는 여기서만. */
+.dashcard{text-align:left;width:100%}
+.archivebtn{flex:0 0 auto;font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--line);
+  border-radius:20px;padding:2px 9px;cursor:pointer}
+.archivebtn:hover{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.cabinet{margin:26px 0 8px}
+.cab-head{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:0;
+  border-top:1px solid var(--line);padding:14px 2px 10px;cursor:pointer;font-size:14px;font-weight:700;color:var(--muted)}
+.cab-head:hover{color:var(--ink)}
+.cab-head b{color:var(--ink);font-family:var(--mono)}
+.cab-head .hint{font-weight:400;margin-left:6px}
+.cab-caret{font-size:11px;color:var(--faint)}
+.cab-empty{font-size:13px;color:var(--faint);padding:6px 2px 14px}
+.cab-list{display:flex;flex-direction:column;gap:8px;padding-bottom:8px}
+.cab-row{display:flex;align-items:center;gap:12px;background:var(--field);border:1px solid var(--line);
+  border-radius:var(--radius);padding:10px 14px}
+.cab-main{flex:1;min-width:0}
+.cab-name{font-weight:700;color:var(--ink)}
+.cab-meta{font-size:12px;color:var(--muted);margin-top:2px}
+.cab-when{font-family:var(--mono);color:var(--faint);margin-left:8px}
+.cab-note{font-size:12px;color:var(--muted);margin-top:5px;padding-left:9px;border-left:2px solid var(--line)}
+.cab-btns{display:flex;gap:6px;flex:0 0 auto}
+
+/* 삭제·보류 확인창 */
+.archive-modal .ri-label,.del-modal .ri-label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:14px 0 5px}
+.archive-modal input,.del-modal input{width:100%;border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px;font:inherit}
+.archive-modal input:focus,.del-modal input:focus{outline:2px solid var(--accent-line);outline-offset:0}
+.del-warn{font-size:13px;color:var(--stamp);background:var(--stamp-soft);border:1px solid #E4C4C5;
+  border-radius:var(--radius);padding:9px 12px}
+.del-list{margin:12px 0 8px;padding-left:18px;font-size:13px;color:var(--ink);line-height:1.75}
+.del-safe{font-size:12px;color:var(--muted);background:var(--paper);border-radius:var(--radius);padding:7px 10px}
+.btn.danger{background:var(--stamp);border-color:var(--stamp);color:#fff}
+.btn.danger:hover:not(:disabled){background:#8f312c}
+.btn.danger:disabled{opacity:.45;cursor:not-allowed}
+
+/* ── 한글 양식에 채워 내보내기 ── */
+.formrow{display:flex;gap:8px;align-items:center}
+.formrow input{flex:1;border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px;background:var(--field)}
+.upload-lbl{display:block;text-align:center;margin-top:8px;border-style:dashed}
+.upload-lbl:hover{border-color:var(--accent-line);background:var(--accent-soft)}
+.formwarn{font-size:12px;color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber);
+  border-radius:var(--radius);padding:8px 10px;margin-bottom:8px;line-height:1.5}
+
+/* 보고전 계열 안내 — 틀을 넣기 전에 무엇이 달라지는지 한 줄로 */
+.col.left .hint{
+  margin:8px 0 0;padding:8px 10px;
+  font-size:12px;line-height:1.55;color:var(--muted);
+  background:var(--accent-soft);
+  border-left:2px solid var(--accent-line);border-radius:0 var(--radius) var(--radius) 0;
+}
+.col.left .hint b{color:var(--accent);font-weight:600}
+
+/* ── 담당자 진술: 파일 없이 근거를 세우는 짧은 경로 ── */
+.stmt-toggle{text-align:left;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font-weight:600}
+.stmt-toggle.on{border-bottom-left-radius:0;border-bottom-right-radius:0}
+.stmtbox{padding:10px;border:1px solid var(--accent-line);border-top:0;border-radius:0 0 var(--radius) var(--radius);background:var(--field)}
+.stmtbox .hint.warn{color:var(--amber);background:var(--amber-soft);padding:6px 8px;border-radius:var(--radius)}
+.claimrow{display:flex;gap:7px;align-items:flex-start;padding:5px 6px;margin-bottom:4px;
+  border:1px solid var(--line-soft);border-radius:var(--radius);background:var(--paper);opacity:.55}
+.claimrow.on{opacity:1;border-color:var(--accent-line);background:var(--field)}
+.claimrow input[type=checkbox]{margin-top:5px;flex:none}
+.claimrow textarea{flex:1;border:0;background:transparent;resize:vertical;font-size:13px;line-height:1.5;padding:2px}
+.claimrow textarea:focus{outline:1px solid var(--accent-line);border-radius:3px}
+.claimrow .tag.op{flex:none;align-self:center;font-size:11px;padding:1px 6px;border-radius:9px;
+  background:var(--amber-soft);color:var(--amber);white-space:nowrap}
+/* 최종 점검의 '참고' — 막지 않고 알려만 주는 항목 */
+.checkitem.note{border-left-color:var(--accent-line)}
+.checkitem.note .clevel{background:var(--accent-soft);color:var(--accent)}
+
+/* ── 보고전 뽑기: 계열이 다른 틀을 골랐을 때 (덮어쓰기 대신 새 업무) ── */
+.spinoffbox{margin-top:8px;padding:10px;border:1px solid var(--accent-line);
+  border-radius:var(--radius);background:var(--accent-soft)}
+.spinoffbox .hint{color:var(--muted)}
+.spinoffbox .hint b{color:var(--accent)}
+.danger-more{margin-top:10px;border-top:1px dashed var(--accent-line);padding-top:8px}
+.danger-more summary{font-size:12px;color:var(--faint);cursor:pointer;list-style:none}
+.danger-more summary::-webkit-details-marker{display:none}
+.danger-more summary::before{content:"▸ "}
+.danger-more[open] summary::before{content:"▾ "}
+.danger-more summary:hover{color:var(--stamp)}
+.danger-more .hint{color:var(--stamp);margin:6px 0}
+
+/* ── 집필카드 안내 ── */
+.cguide{margin:-2px 0 12px;font-size:12px;line-height:1.55;color:var(--muted)}
+.cguide b{color:var(--accent)}
+.cf input::placeholder,.cf textarea::placeholder{color:var(--faint);opacity:1}
+/* 예상 분량 · 작성 상태를 나란히. 예전엔 버튼용 .rowbtns 를 재활용해
+   select(width:100%)가 input(flex-basis:0)을 폭 0으로 밀어내 입력이 아예 불가능했다. */
+.two-cf{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end}
+.two-cf .cf{margin-bottom:12px;min-width:0}
+
+
+/* ── 목차 틀 고르기(좌측 판넬) ──
+   드롭다운이 숨기고 있던 것은 단순한 목록이 아니라 '계열'이었다. 계열은 초고 문체와
+   분량을 가르고, 무엇보다 **진행 중인 업무에 덮어쓸 수 있는지**를 가른다(crossFamily).
+   되돌릴 수 없는 '새로 채우기' 앞에서 그 갈림이 접혀 있으면 안 된다 → 탭으로 편다. */
+.famtabs{display:flex;gap:4px;background:var(--line-soft);border:1px solid var(--line);
+  border-radius:var(--radius);padding:3px;margin-bottom:10px}
+.famtab{flex:1 1 0;min-width:0;border:0;background:transparent;color:var(--muted);
+  border-radius:5px;padding:6px 4px;font-size:13px;font-weight:600;line-height:1.25;
+  display:flex;flex-direction:column;align-items:center;gap:1px;transition:background .12s,color .12s}
+.famtab em{font-style:normal;font-size:10.5px;font-weight:500;color:var(--faint)}
+.famtab:hover{background:#fff;color:var(--ink)}
+.famtab.on{background:var(--accent);color:#fff;box-shadow:var(--shadow)}
+.famtab.on em{color:#BFD6D3}
+.famtab:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+.tpllist{display:flex;flex-direction:column;gap:6px}
+.tplcard{display:block;width:100%;text-align:left;font-family:inherit;background:var(--field);
+  border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px;
+  transition:border-color .12s,box-shadow .12s}
+.tplcard:hover{border-color:var(--accent-line)}
+.tplcard.on{border-color:var(--accent-line);box-shadow:0 0 0 2px var(--accent-soft)}
+.tplcard:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tpl-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.tpl-name{font-size:13px;font-weight:600;color:var(--ink);line-height:1.35}
+.tplcard.on .tpl-name{color:var(--accent)}
+.tpl-n{font-family:var(--mono);font-size:11px;color:var(--faint);flex:none}
+/* 고른 틀이 무엇을 넣는지 누르기 전에 보여준다 — '새로 채우기'는 되돌릴 수 없다 */
+.tpl-peek{display:block;margin-top:5px;padding-top:5px;border-top:1px dashed var(--line-soft);
+  font-size:11.5px;line-height:1.55;color:var(--muted)}
+
+/* 목차안 조합: 세 덩이를 쌓아 두면 화면 밖으로 밀려 비교가 안 된다 → 탭으로 겹친다 */
+.blockpick{border:1px solid var(--line);border-radius:var(--radius);background:var(--field);overflow:hidden}
+.blocktabs{display:flex;flex-wrap:wrap;gap:3px;padding:5px;background:var(--line-soft);
+  border-bottom:1px solid var(--line)}
+.blocktab{border:1px solid transparent;background:transparent;color:var(--muted);border-radius:20px;
+  padding:3px 9px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.blocktab:hover{background:#fff;color:var(--ink)}
+.blocktab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.blocktab:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.blockbody{padding:9px 11px 11px}
+.blockdesc{margin:0 0 7px;font-size:12px;color:var(--muted)}
+.blockchks{display:flex;flex-direction:column;gap:1px}
+.blockchks .chk{padding:2px 4px;border-radius:4px;margin:0}
+.blockchks .chk:hover{background:var(--line-soft)}
+.blockchks .chk.on{color:var(--ink)}
+.blockchks .chk input{flex:none}
+
+/* 대시보드·받은 보고를 보고 있을 때는 업무 단계 탭을 흐리게.
+   지금 '업무 밖'에 있다는 것을 드러낸다(누르면 그대로 그 단계로 들어간다). */
+.tabs.away{opacity:.55}
+.tabs.away:hover,.tabs.away:focus-within{opacity:1}
+
+/* ───────────────────────── 공모 가이드라인 ─────────────────────────
+   가이드라인은 업무를 시작할 때 한 번 하는 일이다. 그래서 탭을 만들지 않고
+   목차 화면의 '세 번째 입구'로 들어와 덮는 판으로 연다. */
+.glentry{margin-top:22px;padding:11px 12px;border:1px solid var(--accent-line);
+  border-radius:var(--radius-lg);background:var(--accent-soft)}
+.glentry .hint{margin:6px 0 10px;color:var(--muted)}
+.glentry .hint b{color:var(--accent)}
+
+.gloverlay{position:fixed;inset:0;z-index:40;background:rgba(20,30,35,.42);
+  display:flex;justify-content:center;padding:26px 18px;overflow:auto}
+.glroom{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-lift);width:min(1080px,100%);height:max-content;
+  padding:16px 20px 22px;display:flex;flex-direction:column;gap:14px}
+.glhead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.gltitle{margin:3px 0 0;font-size:18px;letter-spacing:-.01em}
+.glerr{border:1px solid var(--stamp);background:var(--stamp-soft);color:var(--stamp);
+  border-radius:var(--radius);padding:8px 11px}
+.glbusy{border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);
+  border-radius:var(--radius);padding:8px 11px}
+
+/* 단계 띠 — 결재란의 층위 감각을 그대로 쓴다 */
+.glsteps{display:flex;gap:6px;flex-wrap:wrap}
+.glstep{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--faint);
+  border:1px solid var(--line);border-radius:999px;padding:4px 12px 4px 5px;background:var(--field)}
+.glstep b{background:var(--line-soft);color:var(--muted);border-radius:999px;width:19px;height:19px;
+  display:inline-flex;align-items:center;justify-content:center;font-size:11.5px}
+.glstep.on{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.glstep.on b{background:var(--accent);color:#fff}
+
+.glsec{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--field);padding:13px 15px}
+.glsec-head{margin-bottom:10px}
+.glsec-head h3{margin:0 0 4px;font-size:14.5px}
+.glsec-head .hint{margin:0}
+.glcard{margin-top:11px;border:1px solid var(--line-soft);border-radius:var(--radius);
+  padding:11px 12px;background:#FBFCFC}
+.glcard h4{margin:0 0 8px;font-size:13px;color:var(--accent)}
+.glnote{margin:6px 0;font-size:12.5px;color:var(--amber);background:var(--amber-soft);
+  border:1px solid #E8D6AE;border-radius:var(--radius);padding:6px 9px}
+
+/* 올린 파일 목록 */
+.gllist{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.gllist li{border:1px solid var(--line);border-radius:var(--radius);padding:9px 11px;background:var(--field)}
+.gllist li.on{border-color:var(--accent-line);background:var(--accent-soft)}
+.glmeta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:7px}
+.filebtn{display:inline-flex;align-items:center;justify-content:center}
+
+.glchip{font-size:11px;border-radius:999px;padding:2px 8px;border:1px solid var(--accent-line);
+  color:var(--accent);background:var(--accent-soft);white-space:nowrap}
+.glchip.ghost{border-color:var(--line);color:var(--faint);background:var(--field)}
+.glchip.ok{border-color:#9CBF9E;color:#2F6B3A;background:#E7F1E8}
+.glchip.src{border-color:var(--line);color:var(--muted);background:var(--line-soft)}
+.glchip.dept{border-color:#C9B487;color:var(--amber);background:var(--amber-soft)}
+
+/* ② 범위 고르기 — 자동은 기본값일 뿐이고 사람이 눈으로 보고 고친다 */
+.glrange{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:9px}
+.glrange label{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.glrange input{width:88px;border:1px solid var(--line);border-radius:var(--radius);padding:5px 8px;background:var(--field)}
+.glblocks{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--field)}
+.glblk{display:flex;align-items:baseline;gap:8px;padding:3px 9px;border-bottom:1px solid var(--line-soft);font-size:12.5px}
+.glblk:last-child{border-bottom:0}
+.glblk.in{background:var(--accent-soft)}
+.glbi{border:0;background:none;color:var(--faint);font-family:var(--mono);font-size:11px;
+  padding:0;min-width:34px;text-align:right;flex:none}
+.glblk.in .glbi{color:var(--accent);font-weight:700}
+.glbe{border:0;background:none;color:var(--faint);font-size:11px;padding:0 2px;flex:none;visibility:hidden}
+.glblk:hover .glbe,.glblk:hover .glbi{color:var(--accent);text-decoration:underline}
+.glblk:hover .glbe{visibility:visible}
+.glpg{color:var(--faint);font-size:11px;font-family:var(--mono);flex:none}
+.gltx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gltx.tbl{color:var(--accent-2);font-family:var(--mono);font-size:11.5px}
+
+/* ③ 결과 — 전부 제안이다. 체크한 것만 들어간다. */
+.glcheck{display:flex;align-items:flex-start;gap:8px;cursor:pointer}
+.glcheck input{margin-top:3px;flex:none}
+.glcheck.big{font-size:14px}
+.glwarn{border:1px solid var(--stamp);background:var(--stamp-soft);border-radius:var(--radius);
+  padding:8px 11px;margin:8px 0;font-size:12.5px;color:var(--stamp)}
+.glwarn.sm{margin:7px 0 0}
+.glwarn ul{margin:6px 0 0;padding-left:18px}
+.glwarn li{margin:2px 0}
+.gltable{width:100%;border-collapse:collapse;font-size:12.5px}
+.gltable th,.gltable td{border-bottom:1px solid var(--line-soft);padding:5px 7px;text-align:left;vertical-align:top}
+.gltable th{color:var(--faint);font-weight:600;font-size:11.5px}
+.gltable .pts{font-family:var(--mono);color:var(--accent);white-space:nowrap}
+.gltable .dim{color:var(--muted)}
+.gltable .dim em{color:var(--faint);font-style:normal;font-size:11px}
+
+/* 목차 트리 + 항목마다 딸린 필요 자료 */
+.gltree{list-style:none;margin:9px 0 0;padding:0}
+.gltree.l2,.gltree.l3,.gltree.l4{margin-left:15px;padding-left:11px;border-left:1px solid var(--line-soft)}
+.gltree>li{margin:7px 0}
+.glnode{display:flex;align-items:center;gap:7px}
+.gltitle{font-weight:600}
+.glq{margin:3px 0 0;font-size:12.5px;color:var(--accent)}
+.glc{margin:2px 0 0;font-size:12px;color:var(--muted)}
+.glneeds{list-style:none;margin:5px 0 0;padding:0;display:flex;flex-direction:column;gap:5px}
+.glneeds>li{border:1px solid var(--line-soft);border-radius:var(--radius);padding:6px 9px;background:var(--field)}
+.glneed{font-size:12.5px}
+/* 자료마다 '어디서 나왔는지'를 붙인다 — 지어낸 것이 아님을 원문에서 확인할 수 있어야 한다 */
+.glsrc{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0 0 22px}
+.glquote{font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}

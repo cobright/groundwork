@@ -7,12 +7,16 @@ export function genUid() {
 }
 export function makeNode(title) { return { id: genUid(), title, children: [] }; }
 
-export function buildNodes(spec) {
-  return spec.map(([title, kids]) => {
-    const n = makeNode(title);
-    n.children = buildNodes((kids || []).map((k) => (Array.isArray(k) ? k : [k, []])));
+// 서버 템플릿({title, children, card?})으로 목차와 집필카드를 함께 만든다.
+// 보고전 틀은 "그 양식이 요구하는 것"을 카드에 미리 담고 있다 — 이게 보고전의 핵심 값이다.
+export function buildFromTemplate(spec, cards = {}) {
+  const outline = (spec || []).map((s) => {
+    const n = makeNode(s.title);
+    if (s.card) cards[n.id] = { ...s.card };
+    n.children = buildFromTemplate(s.children, cards);
     return n;
   });
+  return outline;
 }
 
 export function locate(outline, id, arr = outline, parent = null) {
@@ -60,6 +64,29 @@ export function move(outline, selId, dir) {
 export function removeNode(outline, selId) {
   const l = locate(outline, selId); if (!l) return { outline, removedIds: [] };
   const removedIds = collectIds(l.node); l.siblings.splice(l.index, 1); return { outline, removedIds };
+}
+
+// 서버가 준 평면 목록(nodes)에 번호를 매긴다 — 화면 네 곳이 쓰는 유일한 구현.
+// 트리 형태에는 numberMap 을, 평면 목록에는 이 함수를 쓴다.
+export function flatNumbers(nodes) {
+  const known = new Set((nodes || []).map((n) => n.uid));
+  const children = {};
+  (nodes || []).forEach((n) => {
+    const p = n.parent_uid && known.has(n.parent_uid) ? n.parent_uid : "_root";  // 부모 잃은 항목은 최상위로
+    (children[p] = children[p] || []).push(n);
+  });
+  Object.values(children).forEach((a) => a.sort((x, y) => x.sort - y.sort));
+  const map = {};
+  const seen = new Set();
+  const walk = (pid, prefix) => (children[pid] || []).forEach((n, i) => {
+    if (seen.has(n.uid)) return;
+    seen.add(n.uid);
+    const num = prefix + (i + 1);
+    map[n.uid] = num;
+    walk(n.uid, num + ".");
+  });
+  walk("_root", "");
+  return map;
 }
 
 // 트리 ↔ 평면(서버 저장용)

@@ -48,11 +48,21 @@ def normalize(o: dict, kind: str, model: str) -> dict | None:
 
 
 # 문서 전체 검토용: 목차별 본문을 하나의 텍스트로 모은다.
-def assemble_document(sections: list[dict]) -> str:
-    """sections: [{number, title, body}] → 번호·제목과 함께 이어붙인 전체 본문."""
+MAX_DOC_CHARS = 12000     # 자료분석 스킬과 같은 기준. 너무 긴 문서는 앞부분만 검토한다.
+
+
+def assemble_document(sections: list[dict], limit: int = MAX_DOC_CHARS) -> tuple[str, bool]:
+    """sections: [{number, title, body}] → (이어붙인 전체 본문, 잘렸는지 여부).
+
+    문서가 길면 모델의 입력 한도를 넘어 실패하거나 비용이 급증하므로 앞부분만 보낸다.
+    잘렸다는 사실은 숨기지 않고 본문 끝과 반환값 양쪽에 남겨 사용자에게 알린다.
+    """
     parts = []
     for s in sections:
         body = (s.get("body") or "").strip()
         head = f"{s.get('number','')} {s.get('title','')}".strip()
         parts.append(f"## {head}\n{body if body else '(본문 없음)'}")
-    return "\n\n".join(parts)
+    text = "\n\n".join(parts)
+    if len(text) > limit:
+        return text[:limit] + "\n\n...(문서가 길어 이하 생략 — 앞부분만 검토합니다)", True
+    return text, False

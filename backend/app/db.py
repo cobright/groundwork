@@ -14,6 +14,61 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+BACKUP_DIR = DB_PATH.parent / "backups"
+KEEP_BACKUPS = 7          # 하루 한 개 × 일주일. 더 두면 폴더만 무거워진다.
+
+
+def backup_db() -> Path | None:
+    """시작할 때 하루 한 번 DB 를 통째로 복사해 둔다.
+
+    왜: 이 앱에는 되돌리기가 거의 없고, 실제로 v0.19에 진행 중이던 계획서의
+    목차 19개·집필카드 19개를 잃은 적이 있다. 확인 문구를 고쳐 재발은 막았지만
+    **돌아갈 자리**가 없었다. 백업은 그 자리다.
+
+    마이그레이션보다 **먼저** 부른다 — 새 버전이 DB 를 잘못 건드렸을 때
+    손대기 전 파일이 남아 있어야 한다.
+    하루 한 개인 이유: 아침에 켠 뒤 오후에 사고가 나면, 그날 첫 상태가 필요한 것이다.
+    실패해도 앱은 그대로 뜬다(백업 때문에 프로그램이 안 켜지면 더 나쁘다).
+    """
+    try:
+        if not DB_PATH.exists() or DB_PATH.stat().st_size == 0:
+            return None
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        target = BACKUP_DIR / f"workbench_{datetime.now().strftime('%Y%m%d')}.db"
+        if target.exists():
+            return target
+        src = sqlite3.connect(DB_PATH)
+        dst = sqlite3.connect(target)
+        try:
+            with dst:
+                src.backup(dst)      # 파일 복사가 아니라 sqlite 가 보장하는 백업
+        finally:
+            src.close()
+            dst.close()
+        old = sorted(BACKUP_DIR.glob("workbench_*.db"))[:-KEEP_BACKUPS]
+        for f in old:
+            try:
+                f.unlink()
+            except OSError:
+                pass
+        return target
+    except Exception as e:                     # noqa: BLE001 — 백업 실패가 기동을 막으면 안 된다
+        print(f"[백업] 건너뜀: {e}")
+        return None
+
+
+def list_backups() -> list[dict]:
+    """보관 중인 백업 목록(최신 순). 화면에 '돌아갈 자리가 있다'를 보여주기 위한 것."""
+    if not BACKUP_DIR.exists():
+        return []
+    out = []
+    for f in sorted(BACKUP_DIR.glob("workbench_*.db"), reverse=True):
+        st = f.stat()
+        out.append({"name": f.name, "date": f.stem.replace("workbench_", ""),
+                    "size": st.st_size, "path": str(f)})
+    return out
+
+
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
@@ -35,6 +90,8 @@ def init_db() -> None:
                 status TEXT NOT NULL DEFAULT '정상 진행',
                 stage TEXT NOT NULL DEFAULT '업무준비',
                 due_date TEXT NOT NULL DEFAULT '',
+                archived_at TEXT NOT NULL DEFAULT '',   -- 보관함(캐비넷)에 넣은 시각. 비어 있으면 활성.
+                archive_note TEXT NOT NULL DEFAULT '',  -- 왜 보관했는지 한 줄
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -78,6 +135,7 @@ def init_db() -> None:
                 base_date TEXT NOT NULL DEFAULT '',
                 trust TEXT NOT NULL DEFAULT '보통',
                 text TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',           -- 담당자 메모(자료 내용이 아니라 사람의 말)
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
                 FOREIGN KEY (dept_id) REFERENCES departments(id)
@@ -174,6 +232,68 @@ def init_db() -> None:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL DEFAULT ''
             );
+            -- 한글(HWPX) 양식 보관함. 사용자가 올린 양식 원본을 그대로 담아두고,
+            -- 최종본을 내보낼 때 이 중 하나를 골라 그 구조에 채워 넣는다.
+            -- 공모 가이드라인 보관함. 공모 한 건에 파일이 여러 개 온다
+            -- (공고 / 수립 가이드라인 / 서식). 종류를 나눠 담고 원본을 그대로 둔다.
+            -- 가이드라인은 '근거'가 아니라 '요구사항'이므로 resources 에 넣지 않는다.
+            CREATE TABLE IF NOT EXISTS guidelines (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                name TEXT NOT NULL DEFAULT '',        -- 사용자가 붙인 이름
+                filename TEXT NOT NULL DEFAULT '',    -- 올린 파일 이름
+                doc_kind TEXT NOT NULL DEFAULT '공고', -- 공고/수립 가이드라인/서식
+                data BLOB NOT NULL,                   -- 원본 그대로(정정 공고 대비)
+                size INTEGER NOT NULL DEFAULT 0,
+                file_kind TEXT NOT NULL DEFAULT '',   -- pdf/hwpx/hwp (읽은 결과)
+                pages INTEGER NOT NULL DEFAULT 0,
+                blocks INTEGER NOT NULL DEFAULT 0,
+                read_note TEXT NOT NULL DEFAULT '',   -- 못 읽은 것이 있으면 사람이 읽는 말
+                range_start INTEGER NOT NULL DEFAULT -1,  -- 사람이 고른 분석 구간
+                range_end INTEGER NOT NULL DEFAULT -1,
+                analysis TEXT NOT NULL DEFAULT '',    -- 마지막 분석 결과(JSON). 제안일 뿐이다.
+                analyzed_at TEXT NOT NULL DEFAULT '',
+                model TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            -- 목차를 통째로 갈아끼우기 '직전'의 상태. 되돌리기의 근거가 된다.
+            -- 목차 항목은 바뀌지 않는 uid 로 식별되므로 그대로 적어 두었다가 되살릴 수 있다.
+            CREATE TABLE IF NOT EXISTS outline_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                taken_at TEXT NOT NULL,
+                reason TEXT NOT NULL DEFAULT '',      -- 왜 찍혔는지(목차 교체/직접 저장)
+                summary TEXT NOT NULL DEFAULT '',     -- 사람이 읽는 한 줄(항목 12 · 카드 12 · 본문 3)
+                data TEXT NOT NULL,                   -- 목차·카드·본문·검토의견·연결 (JSON)
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            -- 자료의 원본 파일. resources 에 BLOB 을 넣지 않고 딴 표에 두는 이유:
+            -- 자료 목록은 SELECT * 로 읽는 곳이 여럿이라, 같은 표에 두면 목록을 부를 때마다
+            -- 수십 MB 가 딸려 나온다. 자료 1건에 파일 1개(붙여넣기로 만든 자료는 없음).
+            CREATE TABLE IF NOT EXISTS resource_files (
+                resource_id INTEGER PRIMARY KEY,
+                filename TEXT NOT NULL DEFAULT '',    -- 올린 파일 이름(그대로 내려받게 한다)
+                file_kind TEXT NOT NULL DEFAULT '',   -- pdf/hwpx/hwp/xlsx/docx (읽은 결과)
+                size INTEGER NOT NULL DEFAULT 0,
+                pages INTEGER NOT NULL DEFAULT 0,
+                blocks INTEGER NOT NULL DEFAULT 0,
+                read_note TEXT NOT NULL DEFAULT '',   -- 못 읽은 것이 있으면 사람이 읽는 말
+                data BLOB NOT NULL,                   -- 원본 그대로(원문 대조는 사람의 몫)
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS hwpx_forms (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL DEFAULT '',        -- 사용자가 붙인 이름
+                filename TEXT NOT NULL DEFAULT '',    -- 올린 파일 이름
+                data BLOB NOT NULL,                   -- 양식 원본(.hwpx) 그대로
+                size INTEGER NOT NULL DEFAULT 0,
+                note TEXT NOT NULL DEFAULT '',        -- 어떤 용도의 양식인지 메모
+                supported INTEGER NOT NULL DEFAULT 1, -- 우리가 채울 수 있는 구조인가
+                reason TEXT NOT NULL DEFAULT '',      -- 못 채운다면 왜인지(사람이 읽는 말)
+                created_at TEXT NOT NULL
+            );
             """
         )
         _migrate(conn)
@@ -185,6 +305,11 @@ def _migrate(conn) -> None:
     pcols = [r["name"] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
     if "due_date" not in pcols:
         conn.execute("ALTER TABLE projects ADD COLUMN due_date TEXT NOT NULL DEFAULT ''")
+    # 보관함: 기존 업무는 archived_at='' 이 되어 모두 활성으로 남는다.
+    if "archived_at" not in pcols:
+        conn.execute("ALTER TABLE projects ADD COLUMN archived_at TEXT NOT NULL DEFAULT ''")
+    if "archive_note" not in pcols:
+        conn.execute("ALTER TABLE projects ADD COLUMN archive_note TEXT NOT NULL DEFAULT ''")
     # evidence.source_changed
     ecols = [r["name"] for r in conn.execute("PRAGMA table_info(evidence)").fetchall()]
     if "source_changed" not in ecols:
@@ -220,11 +345,36 @@ def _migrate(conn) -> None:
         conn.commit()
         conn.execute("PRAGMA foreign_keys=ON")
 
+    # 자료에 담당자 메모(v0.21). 자료 '내용'이 아니라 그 자료를 어떻게 볼 것인지에 대한
+    # 사람의 말이므로, 이 칸을 고쳐도 재분석·근거 변경신호를 켜지 않는다(routers/resources.py).
+    rcols2 = [r["name"] for r in conn.execute("PRAGMA table_info(resources)").fetchall()]
+    if "note" not in rcols2:
+        conn.execute("ALTER TABLE resources ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+
     # 기본 부서 폴더 시드(부서가 하나도 없을 때만)
     n = conn.execute("SELECT COUNT(*) c FROM departments").fetchone()["c"]
     if n == 0:
         for i, name in enumerate(["기획예산실", "총무과", "인구정책과", "문화관광과"]):
             conn.execute("INSERT INTO departments(name, sort, created_at) VALUES(?,?,?)", (name, i, now()))
+
+    # 양식 보관함: 지원 여부 진단 컬럼
+    if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='hwpx_forms'").fetchone():
+        fcols = [r["name"] for r in conn.execute("PRAGMA table_info(hwpx_forms)").fetchall()]
+        if "supported" not in fcols:
+            conn.execute("ALTER TABLE hwpx_forms ADD COLUMN supported INTEGER NOT NULL DEFAULT 1")
+        if "reason" not in fcols:
+            conn.execute("ALTER TABLE hwpx_forms ADD COLUMN reason TEXT NOT NULL DEFAULT ''")
+
+    # 공모 가이드라인 보관함(v0.20). 표는 CREATE IF NOT EXISTS 로 생기고,
+    # 여기서는 나중에 컬럼이 늘었을 때를 대비해 확인만 한다.
+    if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='guidelines'").fetchone():
+        gcols = [r["name"] for r in conn.execute("PRAGMA table_info(guidelines)").fetchall()]
+        for col, ddl in (("range_start", "INTEGER NOT NULL DEFAULT -1"),
+                         ("range_end", "INTEGER NOT NULL DEFAULT -1"),
+                         ("read_note", "TEXT NOT NULL DEFAULT ''"),
+                         ("doc_kind", "TEXT NOT NULL DEFAULT '공고'")):
+            if col not in gcols:
+                conn.execute(f"ALTER TABLE guidelines ADD COLUMN {col} {ddl}")
 
     # 자료요청 ②: 요청일·마감일·회신자료 컬럼
     if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='data_requests'").fetchone():

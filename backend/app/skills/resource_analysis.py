@@ -15,6 +15,7 @@ SYSTEM = (
     "당신은 한국 지방자치단체의 행정문서 작성을 돕는 자료분석 보조자입니다. "
     "주어진 자료의 '실제 내용 안에서만' 분석합니다. 자료에 없는 사실·수치·기관명을 "
     "추측하거나 지어내지 마십시오. 불확실하면 cautions 에 그 점을 적습니다. "
+    "수치가 있으면 key_points 에 연도·단위와 함께 그대로 옮겨 적으십시오(반올림·추정 금지). "
     "반드시 아래 JSON 스키마 하나만 출력하고, 그 외 설명·머리말·마크다운을 붙이지 마십시오.\n"
     '{"summary": "핵심 요약 2~3문장", '
     '"key_points": ["자료의 주요 내용·수치 항목", "..."], '
@@ -22,17 +23,36 @@ SYSTEM = (
     '"cautions": ["기준연도·출처·확정 여부 등 주의사항", "..."]}'
 )
 
+# 부서 회신 자료일 때 덧붙이는 규칙.
+# 담당자가 대신 하기 어려운 일은 '요약'이 아니라 **요청한 것 중 빠진 것 찾기**다.
+# 세부사업계획서 40쪽을 받아 놓고 정작 요청한 수치가 없다는 것은, 초고를 쓰다가
+# 뒤늦게 알게 되는 것이 가장 비싸다.
+ASKED_RULE = (
+    "\n이 자료는 다른 부서에 요청해서 받은 회신 자료입니다. 무엇을 요청했는지가 함께 주어집니다. "
+    "요청한 항목 하나하나에 대해 이 자료에 답이 있는지 확인하십시오.\n"
+    "- 답이 있으면 key_points 맨 앞에 '요청한 ○○: (자료에 적힌 값 그대로)' 로 적습니다.\n"
+    "- 답이 없으면 cautions 맨 앞에 '요청한 ○○은(는) 이 자료에 없습니다 — 추가 요청 필요' 로 적습니다. "
+    "비슷해 보이는 다른 수치로 대신하거나 채워 넣지 마십시오.\n"
+    "- 요청하지 않았지만 문서를 쓸 때 쓸모 있어 보이는 내용은 usable_for 에 적습니다."
+)
+
 
 def analyze_resource(name: str, kind: str, source_org: str, base_date: str, text: str,
-                     provider_name: str | None = None) -> dict:
-    """자료 한 건을 분석해 구조화된 dict 를 돌려준다. 확정은 하지 않는다(사용자 몫)."""
-    provider = get_provider(provider_name)
+                     provider_name: str | None = None, asked: str = "") -> dict:
+    """자료 한 건을 분석해 구조화된 dict 를 돌려준다. 확정은 하지 않는다(사용자 몫).
+
+    asked: 이 자료가 부서 회신이면 '무엇을 요청했는지'. 있으면 요청 대조까지 시킨다.
+    """
+    provider = get_provider(provider_name, task="resource_analysis")
     meta = f"[자료명] {name}\n[유형] {kind}\n[작성기관] {source_org}\n[기준일] {base_date}"
+    if asked.strip():
+        meta += f"\n[요청한 내용] {asked.strip()}"
     body = text.strip()
     if len(body) > 12000:          # 초기 버전: 지나치게 긴 자료는 앞부분만
         body = body[:12000] + "\n...(이하 생략)"
     user = f"{meta}\n\n[자료 본문]\n{body}\n\n위 자료를 분석해 지정된 JSON 으로만 답하십시오."
-    raw = provider.complete([Message("system", SYSTEM), Message("user", user)],
+    system = SYSTEM + (ASKED_RULE if asked.strip() else "")
+    raw = provider.complete([Message("system", system), Message("user", user)],
                             temperature=0.1, max_tokens=1500)
     data = _parse_json(raw)
     # 스키마 방어: 누락 필드 채우고 타입 보정

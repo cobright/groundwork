@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api, STRICTNESS } from "./api.js";
+import { flatNumbers } from "./outlineModel.js";
+import { useColumns } from "./Columns.jsx";
 
-const PROVIDERS = [["", "기본(.env)"], ["openai", "OpenAI"], ["claude", "Claude"], ["gemini", "Gemini"]];
+const PROVIDERS = [["", "설정대로"], ["openai", "OpenAI"], ["claude", "Claude"], ["gemini", "Gemini"]];
 
 export default function DraftRoom({ pid }) {
+  const cols = useColumns("draft", { left: 300, right: 340 }, { left: "목차 항목", right: "근거" });
   const [nodes, setNodes] = useState([]);
   const [numbers, setNumbers] = useState({});
   const [evidence, setEvidence] = useState([]);
@@ -58,8 +61,9 @@ export default function DraftRoom({ pid }) {
   const linked = evidence.filter((e) => e.node_uid === uid);
 
   return (
-    <div className="rr">
-      {err && <div className="rr-err" onClick={() => setErr("")}>{err} <span className="x">✕</span></div>}
+    <div className={"rr" + cols.cls} ref={cols.ref} style={cols.style}>
+      {cols.handles}
+      {err &&<div className="rr-err" onClick={() => setErr("")}>{err} <span className="x">✕</span></div>}
 
       {/* 좌: 목차 항목 선택 */}
       <section className="col left">
@@ -116,20 +120,12 @@ export default function DraftRoom({ pid }) {
         {linked.length === 0 && <div className="hint">이 목차에 연결된 근거가 없습니다. ‘자료·근거’에서 근거의 ‘목차 연결’을 이 항목으로 지정하세요.</div>}
         {linked.map((e, i) => (
           <div className="devi" key={e.id}>
-            <div className="devitop">E-{String(i + 1).padStart(3, "0")} <span className={"est " + (e.source_changed ? "chg" : "")}>{e.status}</span></div>
+            <div className="devitop">{e.ev_no || `E-${String(i + 1).padStart(3, "0")}`} <span className={"est " + (e.source_changed ? "chg" : "")}>{e.status}</span></div>
             <div className="deviclaim">{e.claim || <span className="hint">주장 없음</span>}</div>
-            {e.source_changed ? <div className="chgflag">근거 자료 변경됨 — 확인 필요</div> : null}
+            {e.source_changed ? <div className="chgflag">근거 자료 변경됨 — ‘자료·근거’에서 확인</div> : null}
           </div>
         ))}
       </section>
     </div>
   );
-}
-
-function flatNumbers(nodes) {
-  const children = {}; nodes.forEach((n) => { const p = n.parent_uid || "_root"; (children[p] = children[p] || []).push(n); });
-  Object.values(children).forEach((a) => a.sort((x, y) => x.sort - y.sort));
-  const map = {};
-  const walk = (pid, prefix) => (children[pid] || []).forEach((n, i) => { const num = prefix + (i + 1); map[n.uid] = num; walk(n.uid, num + "."); });
-  walk("_root", ""); return map;
 }

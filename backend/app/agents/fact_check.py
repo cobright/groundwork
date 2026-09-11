@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from ..providers.base import Message
 from ..providers.registry import get_provider
+from ..services.evidence import evidence_mark
 
 SYSTEM = (
     "당신은 한국 지방자치단체 행정문서의 '사실확인' 검토자입니다. "
@@ -22,6 +23,9 @@ SYSTEM = (
     "2) 본문이 근거보다 넓게 말하거나(범위 초과), 수치·기준연도·기관명이 근거와 다르면 지적합니다.\n"
     "3) 근거가 아예 없는 사실·수치는 '근거 부족'으로 지적합니다.\n"
     "4) 근거 자체가 흔들리면(미확정/자료 충돌/낮은 신뢰등급/오래된 기준일) '자료를 사람이 확인해야 함'으로 올립니다. "
+    "4-1) [진술] 로 표시된 근거는 담당자가 직접 말한 사실입니다. 틀렸다고 판정하지 말고, "
+    "문서로 확인이 필요한지(수치·기관명·법령처럼 대외 제출 시 근거가 요구되는 것인지)만 지적하십시오. "
+    "담당자가 아는 것으로 충분한 내부 사실은 지적하지 마십시오.\n"
     "절대로 '이 자료는 틀렸다'고 단정하지 마십시오.\n"
     "5) 본문을 고쳐 쓰지 마십시오. 수정 제안은 참고로만 제시하고, 반영은 사용자가 결정합니다.\n"
     "6) 문제가 없으면 빈 목록을 반환합니다. 억지로 만들지 마십시오.\n"
@@ -41,7 +45,7 @@ def review_facts(title: str, number: str, body: str, evidences: list[dict],
                  provider_name: str | None = None) -> list[dict]:
     if not body.strip():
         return []
-    provider = get_provider(provider_name)
+    provider = get_provider(provider_name, task="review_fact")
     ev_txt = _fmt_evidence(evidences)
     user = (
         f"[목차 항목] {number} {title}\n\n"
@@ -81,19 +85,28 @@ def _fmt_evidence(evidences: list[dict]) -> str:
     lines = []
     for i, e in enumerate(evidences, 1):
         state = e.get("state", "")
-        mark = "확정" if state == "사용자 확정" else ("미확정" if state else "근거자료 없음")
+        mark = evidence_mark(e)
         src = (e.get("resource_name") or "근거 없음").strip()
         summary = (e.get("resource_summary") or "").strip()
         flags = []
-        if state and state != "사용자 확정":
+        if mark == "진술":
+            # 진술은 '틀렸다'고 볼 대상이 아니라, 문서로 뒷받침되지 않았다고 볼 대상이다.
+            flags.append("문서 미확인(담당자 진술)")
+        elif state and state != "사용자 확정":
             flags.append("미확정")
         if e.get("source_changed"):
             flags.append("자료 변경됨")
         if (e.get("status") or "") in ("충돌", "사용 보류", "추정"):
             flags.append(e["status"])
         flag_txt = (" [주의: " + ", ".join(flags) + "]") if flags else ""
-        line = f"E-{i:03d} [{mark}]{flag_txt} 주장: {(e.get('claim') or '').strip()} / 자료: {src}"
-        if summary:
+        tag = e.get("ev_no") or f"E-{i:03d}"     # 번호는 근거표·부록과 같은 것을 쓴다
+        loc = (e.get("locator") or "").strip()
+        line = f"{tag} [{mark}]{flag_txt} 주장: {(e.get('claim') or '').strip()} / 자료: {src}"
+        if mark == "진술":
+            # 진술의 요약은 진술문 전체다 — 근거마다 반복하지 않고, 해당 대목만 인용한다.
+            if loc:
+                line += f"\n     진술 원문: {loc}"
+        elif summary:
             line += f"\n     자료요약: {summary}"
         lines.append(line)
     return "\n".join(lines)

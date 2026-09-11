@@ -10,13 +10,32 @@
 from __future__ import annotations
 from ..providers.base import Message
 from ..providers.registry import get_provider
+from ..services.evidence import evidence_mark, STATEMENT_KIND
 
 _COMMON = (
     "당신은 한국 지방자치단체의 행정문서 초고를 돕는 보조자입니다. "
     "지금 문서의 목차 항목 '하나'에 대한 초고만 작성합니다. "
     "제공된 '집필카드'와 '확정 근거'에 있는 사실만 사용하십시오. "
-    "행정문서 문체(간결한 개조식 또는 짧은 서술)로 작성하되, 과장·단정·홍보성 표현을 피합니다."
+    "과장·단정·홍보성 표현을 피합니다."
 )
+
+# 문체는 근거 취급 규칙(_RULES)과 별개의 축이다.
+# 무엇을 쓸 수 있는가(_RULES)와 어떤 모양으로 쓰는가(_STYLE)는 서로 간섭하지 않는다.
+_STYLE = {
+    "계획서": (
+        "문체(계획서):\n"
+        "- 행정문서 문체. 짧은 서술 또는 개조식.\n"
+        "- 지정된 분량에 맞춥니다."
+    ),
+    "보고전": (
+        "문체(보고전 — 한 쪽짜리 일상 보고):\n"
+        "- 개조식만 씁니다. 줄머리는 ○ 를 쓰고, 하위는 두 칸 들여 - 를 씁니다.\n"
+        "- 한 줄에 한 가지 사실만 담고, 서술형 어미(…입니다/…하였습니다)를 쓰지 않습니다. "
+        "'현황 파악 완료'처럼 명사형으로 끊습니다.\n"
+        "- 지정된 분량(줄 수)을 반드시 지킵니다. 넘치면 덜 중요한 줄을 버립니다.\n"
+        "- 수식어를 넣지 않습니다. 상급자가 30초 안에 읽습니다."
+    ),
+}
 
 _RULES = {
     "엄격": (
@@ -44,14 +63,17 @@ _RULES = {
 
 
 def write_draft(card: dict, evidences: list[dict], title: str, number: str,
-                strictness: str = "엄격", provider_name: str | None = None) -> dict:
+                strictness: str = "엄격", provider_name: str | None = None,
+                family: str = "계획서") -> dict:
     """목차 하나의 초고(제안)를 생성한다. 본문에 자동 반영하지 않는다."""
-    provider = get_provider(provider_name)
+    provider = get_provider(provider_name, task="draft_brief" if family == "보고전" else "draft_plan")
     rules = _RULES.get(strictness, _RULES["엄격"])
+    style = _STYLE.get(family, _STYLE["계획서"])
 
     card_txt = _fmt_card(card)
     ev_txt = _fmt_evidence(evidences)
     has_conf = any(e.get("state") == "사용자 확정" for e in evidences)
+    has_stmt = any(e.get("resource_kind") == STATEMENT_KIND for e in evidences)
 
     user = (
         f"[목차 항목] {number} {title}\n\n"
@@ -59,13 +81,16 @@ def write_draft(card: dict, evidences: list[dict], title: str, number: str,
         f"[이 목차에 연결된 확정 근거]\n{ev_txt}\n\n"
         + ("주의: 확정된 근거가 없습니다. 근거가 필요한 내용은 지어내지 말고 "
            "[확인 필요: ...] 로만 남기십시오.\n\n" if not has_conf else "")
+        + ("주의: [진술] 로 표시된 것은 담당자가 직접 말한 사실이며 문서로 확인된 자료가 아닙니다. "
+           "그 내용을 쓰는 것은 되지만, 문서·통계에서 확인된 것처럼 단정하지 마십시오.\n\n"
+           if has_stmt else "")
         + "위 재료만으로 이 목차의 초고를 작성하십시오. 재료 밖의 사실을 추가하지 마십시오."
     )
     text = provider.complete(
-        [Message("system", _COMMON + "\n\n" + rules), Message("user", user)],
-        temperature=0.2, max_tokens=1800,
+        [Message("system", _COMMON + "\n\n" + style + "\n\n" + rules), Message("user", user)],
+        temperature=0.2, max_tokens=600 if family == "보고전" else 1800,
     ).strip()
-    return {"ai_suggestion": text, "strictness": strictness,
+    return {"ai_suggestion": text, "strictness": strictness, "family": family,
             "model": getattr(provider, "model", provider.name),
             "used_confirmed_evidence": has_conf}
 
@@ -78,6 +103,7 @@ def _fmt_card(card: dict) -> str:
         ("핵심 질문", card.get("question")),
         ("핵심 메시지", card.get("message")),
         ("반드시 포함할 내용", card.get("content")),
+        ("분량", card.get("length")),   # 보고전에서는 분량이 곧 형식이다
     ]
     out = [f"- {k}: {v}" for k, v in rows if (v or "").strip()]
     return "\n".join(out) or "(집필카드 내용 없음)"
@@ -88,15 +114,16 @@ def _fmt_evidence(evidences: list[dict]) -> str:
         return "(연결된 근거 없음)"
     lines = []
     for i, e in enumerate(evidences, 1):
-        tag = "E-%03d" % i
-        state = e.get("state", "")
-        mark = "확정" if state == "사용자 확정" else "미확정"
+        tag = e.get("ev_no") or ("E-%03d" % i)   # 번호는 근거표·부록과 같은 것을 쓴다
+        mark = evidence_mark(e)                  # 진술을 확정 자료로 위장하지 않는다
         claim = (e.get("claim") or "").strip()
         src = (e.get("resource_name") or "근거 없음").strip()
         loc = (e.get("locator") or "").strip()
         summary = (e.get("resource_summary") or "").strip()
         line = f"{tag} [{mark}] 주장: {claim} / 근거자료: {src}{(' ' + loc) if loc else ''}"
-        if summary:
+        # 진술은 요약이 진술문 전체라 근거마다 통째로 반복된다. 인용(locator)이 이미
+        # 정확한 출처이므로 요약은 붙이지 않는다.
+        if summary and mark != "진술":
             line += f"\n     자료요약: {summary}"
         lines.append(line)
     return "\n".join(lines)

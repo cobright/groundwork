@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { api, RESOURCE_KINDS } from "./api.js";
+import { useColumns } from "./Columns.jsx";
 
-const PROVIDERS = [["", "기본(.env)"], ["openai", "OpenAI"], ["claude", "Claude"], ["gemini", "Gemini"]];
+const PROVIDERS = [["", "설정대로"], ["openai", "OpenAI"], ["claude", "Claude"], ["gemini", "Gemini"]];
 const STATE_LABEL = { "분석 전": "분석 전", "분석 완료": "분석 완료(미확정)", "재분석 필요": "재분석 필요", "사용자 확정": "확정됨" };
-const EMPTY = { name: "", kind: "부서자료", source_org: "", base_date: "", text: "" };
+const EMPTY = { name: "", kind: "부서자료", source_org: "", base_date: "", text: "", note: "" };
 const arr = (v) => (Array.isArray(v) ? v : []);
 
 export default function LibraryRoom() {
+  const cols = useColumns("library", { left: 300, right: 340 }, { left: "부서 폴더", right: "자료 수정" });
   const [depts, setDepts] = useState([]);
   const [deptId, setDeptId] = useState(null);
   const [resources, setResources] = useState([]);
@@ -15,12 +17,17 @@ export default function LibraryRoom() {
   const [edit, setEdit] = useState({ ...EMPTY });
   const [provider, setProvider] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);  // 파일 읽기는 AI 분석과 다른 일이다
+  const [showText, setShowText] = useState(false);    // 파일에서 읽은 내용 펼치기
   const [err, setErr] = useState("");
 
   useEffect(() => { loadDepts(); }, []);
   useEffect(() => { if (deptId) loadResources(deptId); }, [deptId]);
   const sel = resources.find((r) => r.id === selId) || null;
-  useEffect(() => { if (sel) setEdit({ name: sel.name, kind: sel.kind, source_org: sel.source_org, base_date: sel.base_date, text: sel.text }); }, [selId]); // eslint-disable-line
+  useEffect(() => {
+    if (sel) setEdit({ name: sel.name, kind: sel.kind, source_org: sel.source_org, base_date: sel.base_date, text: sel.text, note: sel.note || "" });
+    setShowText(false);
+  }, [selId]); // eslint-disable-line
 
   async function loadDepts() {
     try { const d = await api.listDepartments(); setDepts(d); if (d.length && !d.find((x) => x.id === deptId)) setDeptId(d[0].id); }
@@ -30,7 +37,8 @@ export default function LibraryRoom() {
     try { const rs = await api.listLibResources(id); setResources(rs); if (rs.length && !rs.find((r) => r.id === selId)) setSelId(rs[0].id); else if (!rs.length) setSelId(null); }
     catch (e) { setErr(String(e.message || e)); }
   }
-  const dirty = sel && (edit.name !== sel.name || edit.kind !== sel.kind || edit.source_org !== sel.source_org || edit.base_date !== sel.base_date || edit.text !== sel.text);
+  const dirty = sel && (edit.name !== sel.name || edit.kind !== sel.kind || edit.source_org !== sel.source_org
+    || edit.base_date !== sel.base_date || edit.text !== sel.text || edit.note !== (sel.note || ""));
 
   async function addDept() {
     const name = prompt("새 부서 폴더 이름"); if (name === null || !name.trim()) return;
@@ -43,6 +51,18 @@ export default function LibraryRoom() {
   async function delDept(d) {
     if (!confirm(`부서 폴더 '${d.name}'를 삭제할까요?`)) return;
     try { await api.deleteDepartment(d.id); await loadDepts(); } catch (e) { setErr(String(e.message || e)); }
+  }
+  // 파일로 공통자료 등록. 읽어 담기까지만 하고 분석은 사람이 누른다(원칙 1).
+  async function uploadFile(file) {
+    if (!deptId) { alert("먼저 부서 폴더를 고르세요."); return; }
+    setUploading(true); setErr("");
+    try {
+      const r = await api.uploadLibResource(deptId, file, form);
+      setForm({ ...EMPTY, kind: form.kind }); await loadResources(deptId); setSelId(r.id);
+      if (r.file?.read_note) alert(`‘${file.name}’ 을(를) 읽어 등록했습니다.
+
+${r.file.read_note}`);
+    } catch (e) { setErr(String(e.message || e)); } finally { setUploading(false); }
   }
   async function addResource() {
     if (!form.text.trim() && !form.name.trim()) { alert("자료명이나 본문 중 하나는 입력하세요."); return; }
@@ -68,8 +88,9 @@ export default function LibraryRoom() {
   async function confirmA() { await api.confirmLibResource(sel.id); await loadResources(deptId); }
 
   return (
-    <div className="rr">
-      {err && <div className="rr-err" onClick={() => setErr("")}>{err} <span className="x">✕</span></div>}
+    <div className={"rr" + cols.cls} ref={cols.ref} style={cols.style}>
+      {cols.handles}
+      {err &&<div className="rr-err" onClick={() => setErr("")}>{err} <span className="x">✕</span></div>}
 
       {/* 좌: 부서 폴더 */}
       <section className="col left">
@@ -96,15 +117,23 @@ export default function LibraryRoom() {
           <input placeholder="작성기관" value={form.source_org} onChange={(e) => setForm({ ...form, source_org: e.target.value })} />
         </div>
         <input className="wide mb" placeholder="기준일 (예: 2025)" value={form.base_date} onChange={(e) => setForm({ ...form, base_date: e.target.value })} />
-        <textarea className="wide mb" style={{ minHeight: 80 }} placeholder="자료 본문" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} />
-        <button className="btn primary wide" disabled={!deptId} onClick={addResource}>이 부서 폴더에 자료 추가</button>
+        <label className={"btn primary wide filebtn" + (uploading || !deptId ? " disabled" : "")}>
+          {uploading ? "파일 읽는 중…" : "파일에서 등록 (한글·엑셀·워드·PDF)"}
+          <input type="file" accept=".hwpx,.hwp,.xlsx,.xlsm,.xls,.docx,.pdf" disabled={uploading || !deptId}
+            onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) uploadFile(f); }} />
+        </label>
+        <div className="hint mb">표는 칸 그대로 읽어 담고 원본 파일도 함께 보관합니다.
+          여러 업무가 같이 쓰는 자료이므로 원본이 남아 있는 것이 더 중요합니다.</div>
+        <textarea className="wide mb" style={{ minHeight: 80 }} placeholder="또는, 자료 본문을 여기에 붙여넣으세요" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} />
+        <button className="btn wide" disabled={!deptId} onClick={addResource}>붙여넣은 내용으로 자료 추가</button>
 
         <p className="eyebrow mt">자료 목록 ({resources.length})</p>
         {resources.length === 0 && <div className="hint">이 폴더에 등록된 자료가 없습니다.</div>}
         {resources.map((r) => (
           <div key={r.id} className={"rcard" + (r.id === selId ? " sel" : "")} onClick={() => setSelId(r.id)}>
             <div className="rtop"><b>{r.name}</b><span className={"astate s-" + (r.analysis?.state || "분석 전").replace(/\s/g, "")}>{STATE_LABEL[r.analysis?.state] || "분석 전"}</span></div>
-            <div className="rmeta">{r.kind}{r.source_org ? " · " + r.source_org : ""}{r.base_date ? " · " + r.base_date : ""}{r.ref_count > 0 ? ` · 참조 ${r.ref_count}건` : ""}</div>
+            <div className="rmeta">{r.file && <span className="filebadge" title={r.file.filename}>파일</span>}
+              {r.kind}{r.source_org ? " · " + r.source_org : ""}{r.base_date ? " · " + r.base_date : ""}{r.ref_count > 0 ? ` · 참조 ${r.ref_count}건` : ""}</div>
           </div>
         ))}
       </section>
@@ -121,7 +150,30 @@ export default function LibraryRoom() {
               <input value={edit.source_org} onChange={(e) => setEdit({ ...edit, source_org: e.target.value })} placeholder="작성기관" />
             </div>
             <input className="wide mb" value={edit.base_date} onChange={(e) => setEdit({ ...edit, base_date: e.target.value })} placeholder="기준일" />
-            <textarea className="wide rtextedit" value={edit.text} onChange={(e) => setEdit({ ...edit, text: e.target.value })} placeholder="자료 본문" />
+            {sel.file && (
+              <div className="filenote mb">
+                원본 파일: <a href={api.libFileUrl(sel.id)}>{sel.file.filename}</a>
+                <span className="hint"> · {sel.file.file_kind}{sel.file.pages ? ` · ${sel.file.pages}쪽` : ""} · {Math.max(1, Math.round(sel.file.size / 1024)).toLocaleString()}KB</span>
+                <div className="hint">AI 분석은 이 파일에서 읽은 내용을 봅니다.</div>
+                {sel.file.read_note && <div className="warn">{sel.file.read_note}</div>}
+              </div>
+            )}
+            {/* 파일에서 온 본문은 접어서 읽기만 한다 — 한 글자만 건드려도 확정이 풀리고
+                이 자료를 참조하는 업무 전체에 '자료 변경됨' 신호가 간다(업무 자료보다 파장이 크다). */}
+            {sel.file ? (
+              <div className="rotext mb">
+                <button className="btn ghost sm" onClick={() => setShowText((v) => !v)}>
+                  {showText ? "▼" : "▶"} 파일에서 읽은 내용 ({(sel.text || "").length.toLocaleString()}자)
+                </button>
+                {showText && <pre className="robody">{sel.text}</pre>}
+              </div>
+            ) : (
+              <textarea className="wide rtextedit" value={edit.text} onChange={(e) => setEdit({ ...edit, text: e.target.value })} placeholder="자료 본문" />
+            )}
+            <label className="lbl mt">담당자 메모</label>
+            <textarea className="wide memo" value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })}
+              placeholder="이 자료를 어떻게 볼 것인지 적어 두세요. (예: ○○과 제공, 2024년치는 잠정)" />
+            <div className="hint mb">메모는 AI 분석에 넘기지 않고, 고쳐도 확정이 풀리지 않습니다.</div>
             <div className="editbar">
               <button className="btn primary" disabled={!dirty} onClick={saveEdit}>{dirty ? "수정 저장" : "저장됨"}</button>
               {dirty && sel.ref_count > 0 && <span className="warn">저장 시 이 자료를 참조하는 {sel.ref_count}개 업무에 변경 신호가 갑니다.</span>}

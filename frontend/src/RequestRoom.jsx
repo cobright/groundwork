@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api, REQUEST_STATUS } from "./api.js";
+import { flatNumbers } from "./outlineModel.js";
 
 const STATUS_CLASS = { "필요": "st-need", "요청함": "st-sent", "회신옴": "st-back", "반영": "st-done", "보류": "st-hold" };
 const ORIGIN_LABEL = { draft: "초고", review: "검토", user: "직접" };
@@ -11,6 +12,7 @@ export default function RequestRoom({ pid }) {
   const [numbers, setNumbers] = useState({});
   const [filter, setFilter] = useState("전체");
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);   // 회신 파일 읽기(자동 수집과 다른 일)
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [add, setAdd] = useState({ need: "", node_uid: "", dept_id: "" });
@@ -43,8 +45,25 @@ export default function RequestRoom({ pid }) {
   async function del(id) { if (!confirm("이 요청 항목을 삭제할까요?")) return; try { await api.deleteRequest(pid, id); await reload(); } catch (e) { setErr(String(e.message || e)); } }
   async function registerResource(it) {
     if (!confirm("회신받은 내용을 이 업무의 자료로 등록할까요?\n(요청 내용이 자료명, 회신 메모가 본문이 됩니다. 이후 자료·근거에서 분석·연결하세요.)")) return;
-    try { await api.registerRequestResource(pid, it.id); setRecvOpen(null); await reload(); setMsg("회신자료를 업무 자료로 등록했습니다. ‘자료·근거’ 탭에서 분석·근거 연결을 이어가세요."); }
+    try { await api.registerRequestResource(pid, it.id); await reload(); setMsg("회신자료를 업무 자료로 등록했습니다. ‘자료·근거’ 탭에서 분석·근거 연결을 이어가세요."); }
     catch (e) { setErr(String(e.message || e)); }
+  }
+  // 담당자 메모는 '자료'에 붙는다. 여기서 적어도 자료·근거 화면의 그 칸과 같은 칸이다.
+  async function saveMemo(it, note) {
+    setItems((v) => v.map((x) => (x.id === it.id ? { ...x, received_memo: note } : x)));
+    try { await api.setResourceNote(pid, it.received_resource_id, note); }
+    catch (e) { setErr(String(e.message || e)); await reload(); }
+  }
+  // 부서 회신은 대개 파일로 온다. 담당자가 열어 요약해 붙여넣지 않아도 되게 그대로 올린다.
+  async function uploadReceived(it, file) {
+    setUploading(true); setErr(""); setMsg("");
+    try {
+      const r = await api.uploadReceivedFile(pid, it.id, file);
+      await reload();     // 상자는 열어 둔다 — 회신에 대해 남길 말을 여기서 적는다
+      setMsg(`‘${file.name}’ 을(를) 읽어 회신자료로 등록했습니다(${r.file_kind}, 본문 ${(r.chars || 0).toLocaleString()}자).`
+        + (r.read_note ? ` ${r.read_note}` : "")
+        + " ‘자료·근거’ 탭에서 AI 분석을 누르면, 요청한 내용이 이 자료에 들어 있는지까지 짚어 줍니다.");
+    } catch (e) { setErr(String(e.message || e)); } finally { setUploading(false); }
   }
 
   if (!pid) return <div className="rr-empty">먼저 상단에서 업무를 선택하세요.</div>;
@@ -124,16 +143,47 @@ export default function RequestRoom({ pid }) {
             <div className="rc-foot">
               <input className="rc-note" placeholder="비고" defaultValue={it.note || ""} onBlur={(e) => e.target.value !== (it.note || "") && patch(it, { note: e.target.value })} />
               {it.received_resource_id
-                ? <span className="recvdone">회신자료 등록됨: <b>{it.received_resource_name}</b> — 자료·근거에서 분석하세요</span>
-                : <button className="btn ghost sm" onClick={() => setRecvOpen(recvOpen === it.id ? null : it.id)}>회신 등록</button>}
+                ? <><span className="recvdone">회신자료 등록됨: <b>{it.received_resource_name}</b>
+                    {it.received_filename && <> — <a href={api.resourceFileUrl(pid, it.received_resource_id)}>{it.received_filename}</a></>}</span>
+                    <button className="btn ghost sm" onClick={() => setRecvOpen(recvOpen === it.id ? null : it.id)}>
+                      {recvOpen === it.id ? "메모 닫기" : "담당자 메모"}</button></>
+                : <>{it.received_lost && <span className="warn">등록했던 회신자료를 지우셨습니다. 다시 등록할 수 있습니다.</span>}
+                    <button className="btn ghost sm" onClick={() => setRecvOpen(recvOpen === it.id ? null : it.id)}>회신 등록</button></>}
             </div>
-            {recvOpen === it.id && !it.received_resource_id && (
+            {/* 등록 전에는 '회신받은 내용'을 받는 입구, 등록 뒤에는 그 자료의 담당자 메모를 연다.
+                메모 칸을 여기 따로 만들지 않는 이유: 같은 뜻의 자리가 둘이 되면 어느 쪽에 적었는지
+                알 수 없게 된다(이 앱은 이미 '비고'가 요청 항목에 하나 있다). 칸은 하나, 문만 둘이다. */}
+            {recvOpen === it.id && (
               <div className="recvbox">
-                <textarea placeholder="회신받은 내용을 붙여넣거나 요약해 적으세요." defaultValue={it.received_note || ""} onBlur={(e) => e.target.value !== (it.received_note || "") && patch(it, { received_note: e.target.value })} />
-                <div className="recvbar">
-                  <button className="btn primary sm" onClick={() => registerResource(it)}>이 회신을 업무 자료로 등록</button>
-                  <span className="hint">등록하면 자료·근거에서 분석·근거 연결로 이어집니다.</span>
-                </div>
+                {it.received_resource_id ? (<>
+                  <div className="recvor">담당자 메모 — ‘자료·근거’ 탭의 그 칸과 <b>같은 칸</b>입니다</div>
+                  <textarea placeholder="이 자료를 어떻게 볼 것인지 적어 두세요. (예: 2023년치는 잠정이라고 함 / 나머지는 다음 주 회신 예정)"
+                    defaultValue={it.received_memo || ""}
+                    onBlur={(e) => e.target.value !== (it.received_memo || "") && saveMemo(it, e.target.value)} />
+                  <div className="recvbar">
+                    <span className="hint">칸 밖을 누르면 저장됩니다. 메모는 AI 분석에 넘어가지 않고 최종본에도 나가지 않습니다.</span>
+                  </div>
+                </>) : (<>
+                  <div className="recvfile">
+                    <div>
+                      <b>부서가 보낸 파일을 그대로 올리세요.</b>
+                      <span className="hint">한글(.hwpx/.hwp) · 엑셀(.xlsx/.xls) · 워드(.docx) · PDF. 표와 연도별 수치를 칸 그대로 읽어 담고, 원본 파일도 함께 보관합니다.</span>
+                    </div>
+                    <label className={"btn primary sm filebtn" + (uploading ? " disabled" : "")}>
+                      {uploading ? "읽는 중…" : "회신 파일 올리기"}
+                      <input type="file" accept=".hwpx,.hwp,.xlsx,.xlsm,.xls,.docx,.pdf" disabled={uploading}
+                        onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) uploadReceived(it, f); }} />
+                    </label>
+                  </div>
+                  <div className="recvor">또는, 짧은 회신이라면 직접 적기</div>
+                  <textarea placeholder="회신받은 내용을 붙여넣거나 요약해 적으세요."
+                    defaultValue={it.received_note || ""}
+                    onBlur={(e) => e.target.value !== (it.received_note || "") && patch(it, { received_note: e.target.value })} />
+                  <div className="recvbar">
+                    <button className="btn ghost sm" onClick={() => registerResource(it)}>적은 내용을 업무 자료로 등록</button>
+                    <span className="hint">등록하면 자료·근거에서 분석·근거 연결로 이어집니다.</span>
+                  </div>
+                </>)}
               </div>
             )}
           </div>
@@ -141,12 +191,4 @@ export default function RequestRoom({ pid }) {
       </div>
     </div>
   );
-}
-
-function flatNumbers(nodes) {
-  const children = {}; nodes.forEach((n) => { const p = n.parent_uid || "_root"; (children[p] = children[p] || []).push(n); });
-  Object.values(children).forEach((a) => a.sort((x, y) => x.sort - y.sort));
-  const map = {};
-  const walk = (pid, prefix) => (children[pid] || []).forEach((n, i) => { const num = prefix + (i + 1); map[n.uid] = num; walk(n.uid, num + "."); });
-  walk("_root", ""); return map;
 }

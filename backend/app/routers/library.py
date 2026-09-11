@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 import json
-from fastapi import APIRouter, HTTPException
+from urllib.parse import quote
+
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 from ..db import connect, now
+from ..services.attachments import MAX_BYTES, file_meta, read_upload, store_file
+from ..services.doc_read import ReadError
 from ..skills.resource_analysis import analyze_resource
 
 router = APIRouter(prefix="/api/library", tags=["library"])
@@ -23,6 +27,7 @@ def _analysis_dict(row):
 def _lib_item(c, r):
     a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (r["id"],)).fetchone()
     d = dict(r); d["analysis"] = _analysis_dict(a)
+    d["file"] = file_meta(c, [r["id"]]).get(r["id"])
     d["ref_count"] = c.execute("SELECT COUNT(*) c FROM resource_refs WHERE resource_id=?", (r["id"],)).fetchone()["c"]
     dep = c.execute("SELECT name FROM departments WHERE id=?", (r["dept_id"],)).fetchone()
     d["dept_name"] = dep["name"] if dep else ""
@@ -91,6 +96,7 @@ class LibResourceIn(BaseModel):
     base_date: str = ""
     trust: str = "보통"
     text: str = ""
+    note: str = ""        # 담당자 메모. 자료 '내용'이 아니므로 확정을 풀지 않는다(resources.py 와 같은 규칙).
 
 
 @router.get("/resources")
@@ -114,12 +120,75 @@ def add_lib_resource(r: LibResourceIn):
         if not c.execute("SELECT id FROM departments WHERE id=?", (r.dept_id,)).fetchone():
             raise HTTPException(400, "부서를 찾을 수 없습니다.")
         cur = c.execute(
-            "INSERT INTO resources(dept_id,project_id,name,kind,source_org,base_date,trust,text,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-            (r.dept_id, None, r.name.strip() or "제목 없는 자료", r.kind, r.source_org.strip(), r.base_date.strip(), r.trust, r.text, now()),
+            "INSERT INTO resources(dept_id,project_id,name,kind,source_org,base_date,trust,text,note,created_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (r.dept_id, None, r.name.strip() or "제목 없는 자료", r.kind, r.source_org.strip(),
+             r.base_date.strip(), r.trust, r.text, r.note.strip(), now()),
         )
         row = c.execute("SELECT * FROM resources WHERE id=?", (cur.lastrowid,)).fetchone()
         item = _lib_item(c, row)
     return item
+
+
+@router.post("/resources/upload", status_code=201)
+async def upload_lib_resource(request: Request, dept_id: int, filename: str = "", name: str = "",
+                              kind: str = "부서자료", source_org: str = "", base_date: str = "",
+                              trust: str = "보통"):
+    """공통자료실에 파일로 등록한다(본문 = 파일 원시 바이트).
+
+    업무 자료(routers/resources.py)와 **같은 엔진**을 쓴다 — 형식 분기를 새로 만들지 않는다.
+    공통자료는 여러 업무가 함께 참조하므로, 원본이 남아 있는 것이 업무 자료보다 더 중요하다
+    (한 사람이 읽어 옮긴 글자를 여럿이 근거로 쓰게 되기 때문).
+    """
+    data = await request.body()
+    if not data:
+        raise HTTPException(400, "빈 파일입니다. 내려받기가 끊겼는지 확인해 주세요.")
+    if len(data) > MAX_BYTES:
+        raise HTTPException(400, "파일이 너무 큽니다(40MB 이하).")
+    try:
+        info = read_upload(data, filename)
+    except ReadError as e:
+        raise HTTPException(400, str(e))
+    with connect() as c:
+        if not c.execute("SELECT id FROM departments WHERE id=?", (dept_id,)).fetchone():
+            raise HTTPException(400, "부서를 찾을 수 없습니다.")
+        cur = c.execute(
+            "INSERT INTO resources(dept_id,project_id,name,kind,source_org,base_date,trust,text,note,created_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (dept_id, None, (name.strip() or filename.strip() or "올린 자료")[:120], kind,
+             source_org.strip(), base_date.strip(), trust, info["text"], "", now()))
+        rid = cur.lastrowid
+        store_file(c, rid, data, filename, info)
+        row = c.execute("SELECT * FROM resources WHERE id=?", (rid,)).fetchone()
+        item = _lib_item(c, row)
+    return item
+
+
+@router.get("/resources/{rid}/file")
+def download_lib_file(rid: int):
+    """공통자료의 원본 파일. 참조하는 업무 어디서든 원문으로 되돌아갈 수 있어야 한다."""
+    with connect() as c:
+        if not c.execute("SELECT id FROM resources WHERE id=? AND dept_id IS NOT NULL", (rid,)).fetchone():
+            raise HTTPException(404, "공통자료를 찾을 수 없습니다.")
+        f = c.execute("SELECT filename,data FROM resource_files WHERE resource_id=?", (rid,)).fetchone()
+    if not f:
+        raise HTTPException(404, "이 자료에는 올린 원본 파일이 없습니다(붙여넣어 만든 자료입니다).")
+    return Response(content=f["data"], media_type="application/octet-stream",
+                    headers={"Content-Disposition": "attachment; filename*=UTF-8''" + quote(f["filename"] or "자료")})
+
+
+class NoteIn(BaseModel):
+    note: str = ""
+
+
+@router.put("/resources/{rid}/note")
+def set_lib_note(rid: int, body: NoteIn):
+    """담당자 메모만 고친다(자료 수정은 본문까지 통째로 받으므로 따로 둔다 — resources.py 와 같은 이유)."""
+    with connect() as c:
+        if not c.execute("SELECT id FROM resources WHERE id=? AND dept_id IS NOT NULL", (rid,)).fetchone():
+            raise HTTPException(404, "공통자료를 찾을 수 없습니다.")
+        c.execute("UPDATE resources SET note=? WHERE id=?", (body.note.strip(), rid))
+    return {"id": rid, "note": body.note.strip()}
 
 
 @router.put("/resources/{rid}")
@@ -135,8 +204,9 @@ def update_lib_resource(rid: int, r: LibResourceIn):
             cur["trust"] != r.trust or cur["text"] != r.text
         )
         c.execute(
-            "UPDATE resources SET dept_id=?, name=?, kind=?, source_org=?, base_date=?, trust=?, text=? WHERE id=?",
-            (r.dept_id, r.name.strip() or "제목 없는 자료", r.kind, r.source_org.strip(), r.base_date.strip(), r.trust, r.text, rid),
+            "UPDATE resources SET dept_id=?, name=?, kind=?, source_org=?, base_date=?, trust=?, text=?, note=? WHERE id=?",
+            (r.dept_id, r.name.strip() or "제목 없는 자료", r.kind, r.source_org.strip(),
+             r.base_date.strip(), r.trust, r.text, r.note.strip(), rid),
         )
         if changed:
             a = c.execute("SELECT state FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()

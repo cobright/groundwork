@@ -33,7 +33,7 @@ SYSTEM = (
 def review_technical(scope_label: str, content: str, provider_name: str | None = None) -> list[dict]:
     if not content.strip():
         return []
-    provider = get_provider(provider_name)
+    provider = get_provider(provider_name, task="review_technical")
     user = (
         f"[검토 범위] {scope_label}\n\n[검토 대상 본문]\n{content.strip()}\n\n"
         "위 내용을 '실행 가능성' 관점에서 기술검토하여 지정된 JSON 으로만 내십시오."

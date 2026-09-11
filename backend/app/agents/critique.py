@@ -40,7 +40,7 @@ def review_critique(scope_label: str, content: str, perspective: str = "군수",
     if not content.strip():
         return []
     persp_desc = PERSPECTIVES.get(perspective, PERSPECTIVES["군수"])
-    provider = get_provider(provider_name)
+    provider = get_provider(provider_name, task="review_critique")
     system = SYSTEM_TMPL.format(persp_name=perspective, persp_desc=persp_desc)
     user = (
         f"[검토 범위] {scope_label}\n\n[검토 대상 본문]\n{content.strip()}\n\n"

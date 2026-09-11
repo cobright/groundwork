@@ -1,17 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { api, RESOURCE_KINDS, EVIDENCE_STATUS } from "./api.js";
+import { flatNumbers } from "./outlineModel.js";
+import { useColumns } from "./Columns.jsx";
 
-const PROVIDERS = [["", "기본(.env)"], ["openai", "OpenAI"], ["claude", "Claude"], ["gemini", "Gemini"]];
+const PROVIDERS = [["", "설정대로"], ["openai", "OpenAI"], ["claude", "Claude"], ["gemini", "Gemini"]];
 const STATE_LABEL = { "분석 전": "분석 전", "분석 완료": "분석 완료(미확정)", "재분석 필요": "재분석 필요", "사용자 확정": "확정됨" };
-const EMPTY = { name: "", kind: "외부자료", source_org: "", base_date: "", text: "" };
+const EMPTY = { name: "", kind: "외부자료", source_org: "", base_date: "", text: "", note: "" };
 
 export default function ResourceRoom({ pid }) {
+  const cols = useColumns("resources", { left: 300, right: 340 }, { left: "자료 목록", right: "근거표" });
   const [resources, setResources] = useState([]);
   const [evidence, setEvidence] = useState([]);
   const [outline, setOutline] = useState([]);
   const [selId, setSelId] = useState(null);
   const [provider, setProvider] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);   // 파일 읽기는 AI 분석과 다른 일이다
+  const [showText, setShowText] = useState(false);     // 파일에서 읽은 내용 펼치기
   const [err, setErr] = useState("");
   const [form, setForm] = useState({ ...EMPTY });   // 신규 등록 폼
   const [edit, setEdit] = useState({ ...EMPTY });    // 선택 자료 수정 폼
@@ -21,13 +26,23 @@ export default function ResourceRoom({ pid }) {
   const [depts, setDepts] = useState([]);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [promoteDept, setPromoteDept] = useState(null);
+  // 담당자 진술: 진술문 → 주장 후보(제안) → 사람이 골라 채택
+  const [stmtOpen, setStmtOpen] = useState(false);
+  const [stmtText, setStmtText] = useState("");
+  const [stmtRid, setStmtRid] = useState(null);
+  const [stmtClaims, setStmtClaims] = useState([]);   // [{claim, quote, opinion, pick}]
+  const [stmtNode, setStmtNode] = useState("");
+  const [stmtNote, setStmtNote] = useState("");
 
   useEffect(() => { if (pid) reload(); }, [pid]);
   useEffect(() => { api.listDepartments().then((d) => { setDepts(d); if (d.length) setPromoteDept(d[0].id); }).catch(() => {}); }, []);
   const sel = resources.find((r) => r.id === selId) || null;
   const selLib = sel && sel.source === "library";
+  const selProj = sel && sel.source === "project";        // 다른 업무에서 빌려온 자료(보고전 뽑기)
+  const selRef = selLib || selProj;                        // 빌려온 것 = 여기서 고칠 수 없다
   useEffect(() => {
-    if (sel) setEdit({ name: sel.name, kind: sel.kind, source_org: sel.source_org, base_date: sel.base_date, text: sel.text });
+    if (sel) setEdit({ name: sel.name, kind: sel.kind, source_org: sel.source_org, base_date: sel.base_date, text: sel.text, note: sel.note || "" });
+    setShowText(false);   // 자료를 바꾸면 읽은 내용은 다시 접는다
   }, [selId]); // eslint-disable-line
 
   async function reload() {
@@ -59,8 +74,18 @@ export default function ResourceRoom({ pid }) {
     catch (e) { setErr(String(e.message || e)); }
   }
   const numberMap = flatNumbers(outline);
-  const dirty = sel && (edit.name !== sel.name || edit.kind !== sel.kind || edit.source_org !== sel.source_org || edit.base_date !== sel.base_date || edit.text !== sel.text);
+  const dirty = sel && (edit.name !== sel.name || edit.kind !== sel.kind || edit.source_org !== sel.source_org
+    || edit.base_date !== sel.base_date || edit.text !== sel.text || edit.note !== (sel.note || ""));
 
+  // 파일로 자료 등록. 읽어서 본문에 담기까지만 하고 분석은 사람이 누른다(원칙 1).
+  async function uploadFile(file) {
+    setUploading(true); setErr("");
+    try {
+      const r = await api.uploadResource(pid, file, form);
+      setForm({ ...EMPTY, kind: form.kind }); await reload(); setSelId(r.id);
+      if (r.file?.read_note) alert(`‘${file.name}’ 을(를) 읽어 등록했습니다.\n\n${r.file.read_note}`);
+    } catch (e) { setErr(String(e.message || e)); } finally { setUploading(false); }
+  }
   async function addResource() {
     if (!form.text.trim() && !form.name.trim()) { alert("자료명이나 본문 중 하나는 입력하세요."); return; }
     try { const r = await api.addResource(pid, form); setForm({ ...EMPTY, kind: form.kind }); await reload(); setSelId(r.id); }
@@ -83,34 +108,121 @@ export default function ResourceRoom({ pid }) {
   }
   async function confirmA() { await api.confirmAnalysis(pid, sel.id); await reload(); }
 
+  // ── 담당자 진술 ──
+  // AI는 '쪼개기'만 한다(없는 사실을 채우지 않는다). 근거가 되는 것은 사람이 고른 것뿐이다.
+  async function splitStatement() {
+    if (!stmtText.trim()) { alert("진술 내용을 입력하세요."); return; }
+    setBusy(true); setErr(""); setStmtNote("");
+    try {
+      const r = await api.addStatement(pid, { text: stmtText, provider });
+      setStmtRid(r.resource.id);
+      setStmtClaims((r.claims || []).map((c) => ({ ...c, pick: true })));
+      setStmtNote(r.fallback
+        ? `AI 쪼개기를 쓰지 못해 줄 단위로 나눴습니다${r.reason ? ` (${r.reason})` : ""}. 아래에서 직접 고치세요.`
+        : "");
+      await reload();
+    } catch (e) { setErr(String(e.message || e)); }
+    finally { setBusy(false); }
+  }
+  async function adoptStatement() {
+    const picked = stmtClaims.filter((c) => c.pick && c.claim.trim());
+    if (!picked.length) { alert("근거로 삼을 주장을 하나 이상 고르세요."); return; }
+    try {
+      await api.adoptStatement(pid, stmtRid, {
+        claims: picked.map(({ claim, quote, opinion }) => ({ claim, quote, opinion })),
+        node_uid: stmtNode || null,
+      });
+      setStmtText(""); setStmtClaims([]); setStmtRid(null); setStmtNote(""); setStmtOpen(false);
+      await reload();
+    } catch (e) { setErr(String(e.message || e)); }
+  }
+
   async function addEvidenceRow() {
     const e = await api.addEvidence(pid, { claim: "새 주장", resource_id: null, status: "확인 필요" });
     setEvidence((v) => [...v, e]);
   }
   async function patchEvidence(row, patch) {
-    const next = { ...row, ...patch, source_changed: 0 };
+    // 근거를 고치는 것과 '자료 변경됨'을 확인하는 것은 다른 행위다 → source_changed 는 건드리지 않는다.
+    const next = { ...row, ...patch };
     setEvidence((v) => v.map((x) => (x.id === row.id ? next : x)));
     try { await api.updateEvidence(pid, row.id, next); } catch (e) { setErr(String(e.message || e)); }
+  }
+  async function ackEvidence(row) {
+    try {
+      await api.ackEvidence(pid, row.id);
+      setEvidence((v) => v.map((x) => (x.id === row.id ? { ...x, source_changed: 0 } : x)));
+    } catch (e) { setErr(String(e.message || e)); }
   }
   async function delEvidence(id) { await api.deleteEvidence(pid, id); setEvidence((v) => v.filter((x) => x.id !== id)); }
 
   if (!pid) return <div className="rr-empty">먼저 상단에서 업무를 선택하세요.</div>;
 
   return (
-    <div className="rr">
-      {err && <div className="rr-err" onClick={() => setErr("")}>{err} <span className="x">✕</span></div>}
+    <div className={"rr" + cols.cls} ref={cols.ref} style={cols.style}>
+      {cols.handles}
+      {err &&<div className="rr-err" onClick={() => setErr("")}>{err} <span className="x">✕</span></div>}
 
       {/* 좌: 자료 목록 + 등록 */}
       <section className="col left">
-        <p className="eyebrow">자료 등록</p>
+        {/* 짧은 경로: 파일이 없어도 담당자가 아는 사실로 근거를 세운다.
+            AI는 쪼개기만 하고, 근거가 되는 것은 사람이 고른 것뿐이다. */}
+        <button className={"btn wide stmt-toggle" + (stmtOpen ? " on" : "")} onClick={() => setStmtOpen((v) => !v)}>
+          {stmtOpen ? "▼" : "▶"} 담당자 진술로 근거 만들기
+        </button>
+        {stmtOpen && (
+          <div className="stmtbox">
+            <p className="hint mb">아는 대로 편하게 적으세요. AI는 <b>주장 단위로 쪼개기만</b> 합니다 —
+              없는 사실을 채우지 않습니다. 근거가 되는 것은 아래에서 고른 것뿐입니다.</p>
+            <textarea className="wide mb" style={{ minHeight: 100 }}
+              placeholder={"예)\n어제 폐교 현장 다녀왔고 지붕 일부가 내려앉았음\n군수님이 이번 주 안에 대책 보고하라고 지시\n인근 주민 10여 가구가 민원 넣은 상태"}
+              value={stmtText} onChange={(e) => setStmtText(e.target.value)} />
+            <button className="btn primary wide" onClick={splitStatement} disabled={busy}>
+              {busy ? "쪼개는 중…" : "주장으로 쪼개기"}
+            </button>
+
+            {stmtNote && <div className="hint warn mt2">{stmtNote}</div>}
+            {stmtClaims.length > 0 && (
+              <div className="mt2">
+                <p className="eyebrow">근거로 삼을 주장 고르기</p>
+                {stmtClaims.map((c, i) => (
+                  <div key={i} className={"claimrow" + (c.pick ? " on" : "")}>
+                    <input type="checkbox" checked={c.pick}
+                      onChange={() => setStmtClaims((v) => v.map((x, k) => (k === i ? { ...x, pick: !x.pick } : x)))} />
+                    <textarea value={c.claim} rows={2}
+                      onChange={(e) => setStmtClaims((v) => v.map((x, k) => (k === i ? { ...x, claim: e.target.value } : x)))} />
+                    {c.opinion && <span className="tag op" title="사실이 아니라 담당자의 의견·추측으로 보입니다">의견</span>}
+                  </div>
+                ))}
+                <label className="lbl mt2">어느 목차에 붙일까요 (선택)</label>
+                <select className="wide mb" value={stmtNode} onChange={(e) => setStmtNode(e.target.value)}>
+                  <option value="">연결 안 함</option>
+                  {outline.map((n) => <option key={n.uid} value={n.uid}>{numberMap[n.uid]} {n.title}</option>)}
+                </select>
+                <button className="btn primary wide" onClick={adoptStatement}>
+                  선택한 {stmtClaims.filter((c) => c.pick).length}건을 근거로 채택
+                </button>
+                <p className="hint mt2">채택하면 <b>담당자 진술</b> 근거가 됩니다. 초고·검토·최종본에서
+                  문서 근거와 구분해 표시됩니다.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <p className="eyebrow mt">자료 등록</p>
         <input className="wide mb" placeholder="자료명" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <div className="two mb">
           <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>{RESOURCE_KINDS.map((k) => <option key={k}>{k}</option>)}</select>
           <input placeholder="작성기관" value={form.source_org} onChange={(e) => setForm({ ...form, source_org: e.target.value })} />
         </div>
         <input className="wide mb" placeholder="기준일 (예: 2025)" value={form.base_date} onChange={(e) => setForm({ ...form, base_date: e.target.value })} />
-        <textarea className="wide mb" style={{ minHeight: 90 }} placeholder="자료 본문을 붙여넣으세요 (초기 버전은 텍스트 중심)" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} />
-        <button className="btn primary wide" onClick={addResource}>자료 추가</button>
+        <label className={"btn primary wide filebtn" + (uploading ? " disabled" : "")}>
+          {uploading ? "파일 읽는 중…" : "파일에서 등록 (한글·엑셀·워드·PDF)"}
+          <input type="file" accept=".hwpx,.hwp,.xlsx,.xlsm,.xls,.docx,.pdf" disabled={uploading}
+            onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) uploadFile(f); }} />
+        </label>
+        <div className="hint mb">표는 칸 그대로 읽어 담고 원본 파일도 함께 보관합니다. 위에 적은 자료명·기관·기준일이 같이 붙습니다.</div>
+        <textarea className="wide mb" style={{ minHeight: 90 }} placeholder="또는, 자료 본문을 여기에 붙여넣으세요" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} />
+        <button className="btn wide" onClick={addResource}>붙여넣은 내용으로 자료 추가</button>
 
         <button className="btn wide mt2" onClick={() => { setImportOpen((v) => !v); if (!importOpen) searchLib(); }}>
           {importOpen ? "▼ 공통자료실에서 가져오기" : "▶ 공통자료실에서 가져오기"}
@@ -138,7 +250,9 @@ export default function ResourceRoom({ pid }) {
           <div key={r.id} className={"rcard" + (r.id === selId ? " sel" : "")} onClick={() => setSelId(r.id)}>
             <div className="rtop"><b>{r.name}</b><span className={"astate s-" + (r.analysis?.state || "분석 전").replace(/\s/g, "")}>{STATE_LABEL[r.analysis?.state] || "분석 전"}</span></div>
             <div className="rmeta">
-              <span className={"srcbadge " + (r.source === "library" ? "lib" : "own")}>{r.source === "library" ? `공통 · ${r.dept_name || "부서"}` : "이 업무"}</span>
+              <span className={"srcbadge " + (r.source === "library" ? "lib" : r.source === "project" ? "proj" : "own")}>{r.source === "library" ? `공통 · ${r.dept_name || "부서"}`
+                 : r.source === "project" ? `빌림 · ${r.owner_name || "다른 업무"}` : "이 업무"}</span>
+              {r.file && <span className="filebadge" title={r.file.filename}>파일</span>}
               {r.kind}{r.source_org ? " · " + r.source_org : ""}{r.base_date ? " · " + r.base_date : ""}
             </div>
           </div>
@@ -149,14 +263,14 @@ export default function ResourceRoom({ pid }) {
       <section className="col center">
         {!sel ? <div className="rr-empty">왼쪽에서 자료를 선택하세요.</div> : (
           <>
-            <div className="chead"><p className="eyebrow m0">{selLib ? "공통자료실 자료 (참조)" : "자료 수정"}</p>
-              {selLib
+            <div className="chead"><p className="eyebrow m0">{selProj ? "다른 업무의 자료 (참조)" : selLib ? "공통자료실 자료 (참조)" : "자료 수정"}</p>
+              {selRef
                 ? <button className="btn ghost sm" onClick={unlinkRef}>참조 해제</button>
                 : <span className="headbtns">
                     <button className="btn ghost sm" onClick={() => setPromoteOpen((v) => !v)}>공통자료실로 승격</button>
                     <button className="btn ghost stamp sm" onClick={() => removeResource(sel.id)}>자료 삭제</button>
                   </span>}</div>
-            {!selLib && promoteOpen && (
+            {!selRef && promoteOpen && (
               <div className="promotebox">
                 <div className="two mb">
                   <select value={promoteDept || ""} onChange={(e) => setPromoteDept(+e.target.value)}>
@@ -168,9 +282,20 @@ export default function ResourceRoom({ pid }) {
               </div>
             )}
 
-            {selLib ? (
+            {sel.file && (
+              <div className="filenote mb">
+                원본 파일: <a href={api.resourceFileUrl(pid, sel.id)}>{sel.file.filename}</a>
+                <span className="hint"> · {sel.file.file_kind}{sel.file.pages ? ` · ${sel.file.pages}쪽` : ""} · {Math.max(1, Math.round(sel.file.size / 1024)).toLocaleString()}KB</span>
+                <div className="hint">AI 분석은 이 파일에서 읽은 내용을 봅니다. 담당자가 옮겨 적으실 필요는 없습니다.</div>
+                {sel.file.read_note && <div className="warn">{sel.file.read_note}</div>}
+              </div>
+            )}
+
+            {selRef ? (
               <div className="libview">
-                <div className="libnote">이 자료는 <b>공통자료실({sel.dept_name})</b>의 자료를 참조한 것입니다. 수정·분석·확정은 ‘공통자료실’ 탭에서 하며, 여기서는 근거로 사용만 합니다.</div>
+                <div className="libnote">{selProj
+                  ? <>이 자료는 <b>‘{sel.owner_name}’ 업무</b>의 자료를 참조한 것입니다(복사가 아닙니다). 수정·분석·확정은 그 업무에서 하며, 여기서는 근거로 사용만 합니다.</>
+                  : <>이 자료는 <b>공통자료실({sel.dept_name})</b>의 자료를 참조한 것입니다. 수정·분석·확정은 ‘공통자료실’ 탭에서 하며, 여기서는 근거로 사용만 합니다.</>}</div>
                 <div className="rmeta mb">{sel.kind}{sel.source_org ? " · " + sel.source_org : ""}{sel.base_date ? " · " + sel.base_date : ""}</div>
                 <div className="rtext">{sel.text || <span className="hint">본문이 없습니다.</span>}</div>
               </div>
@@ -182,7 +307,23 @@ export default function ResourceRoom({ pid }) {
               <input value={edit.source_org} onChange={(e) => setEdit({ ...edit, source_org: e.target.value })} placeholder="작성기관" />
             </div>
             <input className="wide mb" value={edit.base_date} onChange={(e) => setEdit({ ...edit, base_date: e.target.value })} placeholder="기준일" />
-            <textarea className="wide rtextedit" value={edit.text} onChange={(e) => setEdit({ ...edit, text: e.target.value })} placeholder="자료 본문" />
+            {/* 파일에서 온 자료의 본문은 '원본이 말하는 그대로'다. 편집 칸으로 두면
+                (가) 엑셀 수천 자가 화면을 다 차지하고 (나) 실수로 한 글자만 건드려도
+                확정이 풀리고 이 자료를 쓰는 근거마다 변경신호가 뜬다. 접어서 읽기만 한다. */}
+            {sel.file ? (
+              <div className="rotext mb">
+                <button className="btn ghost sm" onClick={() => setShowText((v) => !v)}>
+                  {showText ? "▼" : "▶"} 파일에서 읽은 내용 ({(sel.text || "").length.toLocaleString()}자)
+                </button>
+                {showText && <pre className="robody">{sel.text}</pre>}
+              </div>
+            ) : (
+              <textarea className="wide rtextedit" value={edit.text} onChange={(e) => setEdit({ ...edit, text: e.target.value })} placeholder="자료 본문" />
+            )}
+            <label className="lbl mt">담당자 메모</label>
+            <textarea className="wide memo" value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })}
+              placeholder="이 자료를 어떻게 볼 것인지 적어 두세요. (예: ○○과에서 받음, 2024년치는 잠정 / 표 3의 연도별 수치만 필요)" />
+            <div className="hint mb">메모는 담당자의 말이라 AI 분석에 넘기지 않고, 근거표·최종본에도 나가지 않습니다. 고쳐도 확정은 풀리지 않습니다.</div>
             <div className="editbar">
               <button className="btn primary" disabled={!dirty} onClick={saveEdit}>{dirty ? "수정 저장" : "저장됨"}</button>
               {dirty && sel.analysis?.state === "사용자 확정" && <span className="warn">저장하면 확정이 해제되고 재분석이 필요합니다.</span>}
@@ -191,10 +332,10 @@ export default function ResourceRoom({ pid }) {
             )}
 
             <div className="analyzebar">
-              {selLib ? (
+              {selRef ? (
                 sel.analysis?.state === "사용자 확정"
-                  ? <span className="confirmed">✔ 공통자료실에서 확정됨 — 근거로 사용 가능</span>
-                  : <span className="warn">공통자료실에서 아직 확정되지 않았습니다. ‘공통자료실’ 탭에서 분석·확정하세요.</span>
+                  ? <span className="confirmed">✔ {selProj ? `‘${sel.owner_name}’ 업무에서` : "공통자료실에서"} 확정됨 — 근거로 사용 가능</span>
+                  : <span className="warn">{selProj ? `‘${sel.owner_name}’ 업무에서` : "공통자료실에서"} 아직 확정되지 않았습니다. 그곳에서 분석·확정하세요.</span>
               ) : (<>
               <select value={provider} onChange={(e) => setProvider(e.target.value)}>{PROVIDERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
               <button className="btn primary" disabled={busy} onClick={runAnalyze}>{busy ? "분석 중…" : (sel.analysis?.state === "재분석 필요" ? "다시 분석" : "AI 분석")}</button>
@@ -225,8 +366,12 @@ export default function ResourceRoom({ pid }) {
         {evidence.length === 0 && <div className="hint">아직 근거가 없습니다.</div>}
         {evidence.map((row, i) => (
           <div className={"ev" + (row.source_changed ? " changed" : "")} key={row.id}>
-            <div className="evtop"><span className="evno">E-{String(i + 1).padStart(3, "0")}</span>
-              {row.source_changed ? <span className="chgflag">근거 자료 변경됨 — 확인 필요</span> : null}</div>
+            <div className="evtop"><span className="evno">{row.ev_no || `E-${String(i + 1).padStart(3, "0")}`}</span>
+              {row.source_changed
+                ? <span className="chgflag">근거 자료 변경됨 — 원문 확인 필요
+                    <button className="ackbtn" title="자료 원문을 다시 보고 이 근거가 아직 유효한지 확인했다면 누르세요" onClick={() => ackEvidence(row)}>확인함</button>
+                  </span>
+                : null}</div>
             <textarea className="evclaim" value={row.claim} onChange={(e) => patchEvidence(row, { claim: e.target.value })} placeholder="주장·판단" />
             <div className="evrow">
               <select value={row.resource_id || ""} onChange={(e) => patchEvidence(row, { resource_id: e.target.value ? +e.target.value : null })}>
@@ -251,10 +396,3 @@ export default function ResourceRoom({ pid }) {
 }
 
 function arr(v) { return Array.isArray(v) ? v : []; }
-function flatNumbers(nodes) {
-  const children = {}; nodes.forEach((n) => { const p = n.parent_uid || "_root"; (children[p] = children[p] || []).push(n); });
-  Object.values(children).forEach((a) => a.sort((x, y) => x.sort - y.sort));
-  const map = {};
-  const walk = (pid, prefix) => (children[pid] || []).forEach((n, i) => { const num = prefix + (i + 1); map[n.uid] = num; walk(n.uid, num + "."); });
-  walk("_root", ""); return map;
-}

@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 import json
-from fastapi import APIRouter, HTTPException
+from urllib.parse import quote
+
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 from ..db import connect, now
 from ..skills.resource_analysis import analyze_resource
+from ..services.attachments import MAX_BYTES, file_meta, read_upload, store_file
+from ..services.doc_read import ReadError
+from ..services.numbering import attach_evidence_no
 
 router = APIRouter(prefix="/api/projects", tags=["resources"])
 
@@ -16,6 +21,7 @@ class ResourceIn(BaseModel):
     base_date: str = ""
     trust: str = "보통"
     text: str = ""
+    note: str = ""        # 담당자 메모. 자료 '내용'이 아니라 그 자료에 대한 사람의 말이다.
 
 
 def _require(c, pid):
@@ -44,16 +50,26 @@ def list_resources(pid: int):
             "SELECT r.* FROM resources r JOIN resource_refs rf ON r.id=rf.resource_id "
             "WHERE rf.project_id=? ORDER BY r.id DESC", (pid,)
         ).fetchall()
+        files = file_meta(c, [r["id"] for r in own] + [r["id"] for r in refs])
         out = []
         for r in own:
             a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (r["id"],)).fetchone()
             item = dict(r); item["analysis"] = _analysis_dict(a); item["source"] = "own"
+            item["file"] = files.get(r["id"])
             out.append(item)
         for r in refs:
             a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (r["id"],)).fetchone()
-            item = dict(r); item["analysis"] = _analysis_dict(a); item["source"] = "library"
-            dep = c.execute("SELECT name FROM departments WHERE id=?", (r["dept_id"],)).fetchone()
-            item["dept_name"] = dep["name"] if dep else ""
+            item = dict(r); item["analysis"] = _analysis_dict(a); item["file"] = files.get(r["id"])
+            if r["dept_id"] is not None:
+                item["source"] = "library"
+                dep = c.execute("SELECT name FROM departments WHERE id=?", (r["dept_id"],)).fetchone()
+                item["dept_name"] = dep["name"] if dep else ""
+            else:
+                # 다른 업무의 자료를 빌려 온 경우(보고전 뽑기). 공통자료실 자료가 아니다.
+                item["source"] = "project"
+                own = c.execute("SELECT name FROM projects WHERE id=?", (r["project_id"],)).fetchone()
+                item["dept_name"] = ""
+                item["owner_name"] = own["name"] if own else ""
             out.append(item)
     return out
 
@@ -63,12 +79,86 @@ def add_resource(pid: int, r: ResourceIn):
     with connect() as c:
         _require(c, pid)
         cur = c.execute(
-            "INSERT INTO resources(project_id,name,kind,source_org,base_date,trust,text,created_at) VALUES(?,?,?,?,?,?,?,?)",
-            (pid, r.name.strip() or "제목 없는 자료", r.kind, r.source_org.strip(), r.base_date.strip(), r.trust, r.text, now()),
+            "INSERT INTO resources(project_id,name,kind,source_org,base_date,trust,text,note,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            (pid, r.name.strip() or "제목 없는 자료", r.kind, r.source_org.strip(), r.base_date.strip(),
+             r.trust, r.text, r.note.strip(), now()),
         )
         row = c.execute("SELECT * FROM resources WHERE id=?", (cur.lastrowid,)).fetchone()
-    item = dict(row); item["analysis"] = {"state": "분석 전"}; item["source"] = "own"
+    item = dict(row); item["analysis"] = {"state": "분석 전"}; item["source"] = "own"; item["file"] = None
     return item
+
+
+@router.post("/{pid}/resources/upload", status_code=201)
+async def upload_resource(pid: int, request: Request, filename: str = "", name: str = "",
+                          kind: str = "부서자료", source_org: str = "", base_date: str = "",
+                          trust: str = "보통"):
+    """파일을 올려 자료로 등록한다(본문 = 파일 원시 바이트).
+
+    multipart 를 쓰지 않는 이유는 guidelines.py 와 같다 — python-multipart 의존성이 늘면
+    담당자가 1_SETUP 을 다시 돌려야 한다.
+    여기서 분석까지 하지 않는다. 읽어서 본문에 넣을 뿐이고, 분석·확정은 사람이 누른다(원칙 1).
+    """
+    data = await request.body()
+    if not data:
+        raise HTTPException(400, "빈 파일입니다. 내려받기가 끊겼는지 확인해 주세요.")
+    if len(data) > MAX_BYTES:
+        raise HTTPException(400, "파일이 너무 큽니다(40MB 이하).")
+    try:
+        info = read_upload(data, filename)
+    except ReadError as e:
+        raise HTTPException(400, str(e))
+    with connect() as c:
+        _require(c, pid)
+        cur = c.execute(
+            "INSERT INTO resources(project_id,name,kind,source_org,base_date,trust,text,note,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            (pid, (name.strip() or filename.strip() or "올린 자료")[:120], kind, source_org.strip(),
+             base_date.strip(), trust, info["text"], "", now()),
+        )
+        rid = cur.lastrowid
+        store_file(c, rid, data, filename, info)
+        row = c.execute("SELECT * FROM resources WHERE id=?", (rid,)).fetchone()
+        files = file_meta(c, [rid])
+    item = dict(row); item["analysis"] = {"state": "분석 전"}; item["source"] = "own"
+    item["file"] = files.get(rid)
+    return item
+
+
+class NoteIn(BaseModel):
+    note: str = ""
+
+
+@router.put("/{pid}/resources/{rid}/note")
+def set_resource_note(pid: int, rid: int, body: NoteIn):
+    """담당자 메모만 고친다.
+
+    자료 수정(PUT /resources/{rid})은 본문·기준일까지 통째로 받으므로 메모 한 줄을
+    고치려고 부르면 나머지가 빈 값으로 덮인다. 자료요청 화면에서도 같은 메모를
+    적을 수 있어야 하는데(회신에 대해 남길 말), 칸을 새로 만들면 같은 뜻의 자리가
+    둘이 되므로 **같은 칸을 다른 문으로 여는** 쪽을 택했다.
+    """
+    with connect() as c:
+        _require(c, pid)
+        if not c.execute("SELECT id FROM resources WHERE id=? AND project_id=?", (rid, pid)).fetchone():
+            raise HTTPException(404, "이 업무의 자료가 아닙니다(빌려온 자료의 메모는 그쪽에서 고칩니다).")
+        c.execute("UPDATE resources SET note=? WHERE id=?", (body.note.strip(), rid))
+    return {"id": rid, "note": body.note.strip()}
+
+
+@router.get("/{pid}/resources/{rid}/file")
+def download_resource_file(pid: int, rid: int):
+    """올린 원본을 그대로 내려준다. 근거는 언제든 원문으로 되돌아갈 수 있어야 한다(원칙 2)."""
+    with connect() as c:
+        _require(c, pid)
+        ok = c.execute("SELECT 1 FROM resources WHERE id=? AND project_id=?", (rid, pid)).fetchone() or \
+             c.execute("SELECT 1 FROM resource_refs WHERE project_id=? AND resource_id=?", (pid, rid)).fetchone()
+        if not ok:
+            raise HTTPException(404, "이 업무의 자료가 아닙니다.")
+        f = c.execute("SELECT filename,data FROM resource_files WHERE resource_id=?", (rid,)).fetchone()
+    if not f:
+        raise HTTPException(404, "이 자료에는 올린 원본 파일이 없습니다(붙여넣어 만든 자료입니다).")
+    name = f["filename"] or "자료"
+    return Response(content=f["data"], media_type="application/octet-stream",
+                    headers={"Content-Disposition": "attachment; filename*=UTF-8''" + quote(name)})
 
 
 @router.put("/{pid}/resources/{rid}")
@@ -80,15 +170,18 @@ def update_resource(pid: int, rid: int, r: ResourceIn):
         cur = c.execute("SELECT * FROM resources WHERE id=? AND project_id=?", (rid, pid)).fetchone()
         if not cur:
             raise HTTPException(404, "자료를 찾을 수 없습니다.")
-        # 실질적 변경 여부(제목·기준일·본문·기관·유형 중 하나라도 바뀌었는지)
+        # 실질적 변경 여부(제목·기준일·본문·기관·유형 중 하나라도 바뀌었는지).
+        # 담당자 메모(note)는 자료의 내용이 아니라 그 자료를 어떻게 볼지에 대한 사람의 말이므로
+        # 여기서 세지 않는다 — 메모 한 줄에 확정이 풀리고 근거마다 변경신호가 뜨면 아무도 안 쓴다.
         changed = (
             cur["name"] != (r.name.strip() or "제목 없는 자료") or cur["kind"] != r.kind or
             cur["source_org"] != r.source_org.strip() or cur["base_date"] != r.base_date.strip() or
             cur["trust"] != r.trust or cur["text"] != r.text
         )
         c.execute(
-            "UPDATE resources SET name=?, kind=?, source_org=?, base_date=?, trust=?, text=? WHERE id=?",
-            (r.name.strip() or "제목 없는 자료", r.kind, r.source_org.strip(), r.base_date.strip(), r.trust, r.text, rid),
+            "UPDATE resources SET name=?, kind=?, source_org=?, base_date=?, trust=?, text=?, note=? WHERE id=?",
+            (r.name.strip() or "제목 없는 자료", r.kind, r.source_org.strip(), r.base_date.strip(),
+             r.trust, r.text, r.note.strip(), rid),
         )
         if changed:
             a = c.execute("SELECT state FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()
@@ -99,7 +192,8 @@ def update_resource(pid: int, rid: int, r: ResourceIn):
             c.execute("UPDATE evidence SET source_changed=1 WHERE resource_id=?", (rid,))
         row = c.execute("SELECT * FROM resources WHERE id=?", (rid,)).fetchone()
         a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()
-    item = dict(row); item["analysis"] = _analysis_dict(a)
+        files = file_meta(c, [rid])
+    item = dict(row); item["analysis"] = _analysis_dict(a); item["file"] = files.get(rid)
     return item
 
 
@@ -177,8 +271,14 @@ def analyze(pid: int, rid: int, body: AnalyzeIn):
         r = c.execute("SELECT * FROM resources WHERE id=? AND project_id=?", (rid, pid)).fetchone()
         if not r:
             raise HTTPException(404, "자료를 찾을 수 없습니다.")
+        # 부서 회신으로 들어온 자료면 '무엇을 요청했는지'를 함께 넘긴다.
+        # 담당자가 대신 못 하는 일은 요약이 아니라 **요청한 것 중 빠진 것 찾기**다.
+        ask = c.execute("SELECT need FROM data_requests WHERE project_id=? AND received_resource_id=?",
+                        (pid, rid)).fetchone()
+        asked = ask["need"] if ask else ""
     try:
-        result = analyze_resource(r["name"], r["kind"], r["source_org"], r["base_date"], r["text"], body.provider)
+        result = analyze_resource(r["name"], r["kind"], r["source_org"], r["base_date"], r["text"],
+                                  body.provider, asked=asked)
     except Exception as e:
         # 키 미설정·네트워크 등: 사용자에게 그대로 알린다(하네스가 삼키지 않음)
         raise HTTPException(502, f"AI 분석 실패: {e}")
@@ -225,7 +325,8 @@ def list_evidence(pid: int):
     with connect() as c:
         _require(c, pid)
         rows = c.execute("SELECT * FROM evidence WHERE project_id=? ORDER BY id", (pid,)).fetchall()
-    return [dict(r) for r in rows]
+        out = attach_evidence_no(c, pid, [dict(r) for r in rows])
+    return out
 
 
 @router.post("/{pid}/evidence", status_code=201)
@@ -242,7 +343,8 @@ def add_evidence(pid: int, e: EvidenceIn):
             (pid, e.claim.strip(), e.resource_id, e.locator.strip(), e.trust.strip(), e.status, e.node_uid, now()),
         )
         row = c.execute("SELECT * FROM evidence WHERE id=?", (cur.lastrowid,)).fetchone()
-    return dict(row)
+        item = attach_evidence_no(c, pid, [dict(row)])[0]
+    return item
 
 
 @router.put("/{pid}/evidence/{eid}")
@@ -251,12 +353,30 @@ def update_evidence(pid: int, eid: int, e: EvidenceIn):
         _require(c, pid)
         if not c.execute("SELECT id FROM evidence WHERE id=? AND project_id=?", (eid, pid)).fetchone():
             raise HTTPException(404, "근거 항목을 찾을 수 없습니다.")
+        # ★ source_changed 는 여기서 건드리지 않는다.
+        # '근거 자료가 바뀌었다'는 신호는 사람이 원문을 확인했을 때만 꺼진다(아래 acknowledge).
         c.execute(
-            "UPDATE evidence SET claim=?, resource_id=?, locator=?, trust=?, status=?, node_uid=?, source_changed=0 WHERE id=? AND project_id=?",
+            "UPDATE evidence SET claim=?, resource_id=?, locator=?, trust=?, status=?, node_uid=? WHERE id=? AND project_id=?",
             (e.claim.strip(), e.resource_id, e.locator.strip(), e.trust.strip(), e.status, e.node_uid, eid, pid),
         )
         row = c.execute("SELECT * FROM evidence WHERE id=?", (eid,)).fetchone()
-    return dict(row)
+        item = attach_evidence_no(c, pid, [dict(row)])[0]
+    return item
+
+
+@router.post("/{pid}/evidence/{eid}/acknowledge")
+def acknowledge_evidence(pid: int, eid: int):
+    """'근거 자료 변경됨' 신호를 사람이 확인해 내린다.
+    자료를 다시 읽고 이 근거가 아직 유효한지 판단하는 것은 사람의 몫이므로,
+    근거 항목을 수정하는 것만으로는 이 신호가 꺼지지 않는다."""
+    with connect() as c:
+        _require(c, pid)
+        if not c.execute("SELECT id FROM evidence WHERE id=? AND project_id=?", (eid, pid)).fetchone():
+            raise HTTPException(404, "근거 항목을 찾을 수 없습니다.")
+        c.execute("UPDATE evidence SET source_changed=0 WHERE id=? AND project_id=?", (eid, pid))
+        row = c.execute("SELECT * FROM evidence WHERE id=?", (eid,)).fetchone()
+        item = attach_evidence_no(c, pid, [dict(row)])[0]
+    return item
 
 
 @router.delete("/{pid}/evidence/{eid}")
