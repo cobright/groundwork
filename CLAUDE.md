@@ -223,6 +223,8 @@ data_requests, settings`.
 - 포터블 꾸러미에 개발 PC 의 `backend/.env`(키)를 담지 않는다 — 조립 스크립트가 지우고 `.env.example` 로 대신 채운다.
 - `frontend/public/사용설명서.html`(담당자용)과 `portable/사용설명.txt`(꾸러미 만들기·반입 — 관리자용)는 대상이 다르니 합치지 말 것.
 - `.hwp` 관련은 `services/doc_read.py` 를 고친다. `_hwp_read_prototype.py` 는 import 되지 않는 참고본이다. 제어문자 폭(탭=9)은 줄이지 말 것.
+- XML 은 **반드시 `defusedxml`** 로 파싱한다(표준 `xml.etree` 를 import 하지 않는다 — 공공GitLab 보안 스캔이 막는다). 읽기만 안전해지므로 쓰는 쪽은 `_subelement()`·`ET.parse()` 로 둔다. hwpx 접두사(`hp:`)는 유지하지 않아도 한글이 읽는다(실물 확인).
+- `requirements.txt` 의 **하한**은 실제로 돌려 본 버전으로 적고, 간접 의존성도 적는다 — 취약점 검사는 하한을 검사한다.
 
 ### 한 곳에서만 만든다
 - 근거 번호(E-번호) → `services/numbering.py`.

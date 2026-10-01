@@ -221,6 +221,31 @@
   명시적으로 `""` 를 보낸다. **연결 시험을 반드시 함께 둔다** — 키가 틀린 것과 망이 막힌 것은
   담당자가 해야 할 일이 전혀 다른데, 시험이 없으면 둘을 구분할 방법이 없다.
 
+## 문서·파일 읽기(XML)
+
+- **XML 은 전부 `defusedxml` 로 파싱한다**(2026-10-01). 공공GitLab 의 pre-receive 보안
+  스캔(Semgrep)이 표준 `xml.etree` 사용을 ERROR 로 막아 push 가 거부됐다. 지적이 타당했다 —
+  hwpx·docx 는 ZIP+XML 이고 그 파일은 부서 회신처럼 **남이 준 것**이라 XXE·XML 폭탄의
+  입구다. 바꾼 뒤 외부 엔티티가 실제로 `EntitiesForbidden` 으로 막히는 것을 확인했다.
+  `defusedxml` 은 **읽기만** 안전하게 해 준다(fromstring·iterparse·parse·tostring).
+  쓰는 쪽은 없으므로 `SubElement` 는 `_subelement()`(makeelement+append)로 직접 두고,
+  `ElementTree(fromstring(x))` 는 `parse(BytesIO(x))` 로 바꾼다.
+- **hwpx 의 네임스페이스 접두사는 유지하지 않아도 된다**(같은 날). `register_namespace` 로
+  원본 접두사(`hp:`·`hs:`)를 살려 저장해 왔는데, 그 한 줄 때문에 표준 `xml.etree` import 가
+  남아 스캔을 통과하지 못했다. 접두사를 등록하지 않고 저장한 파일(`ns0:`·`ns1:`)을
+  **한글에서 열어 확인했더니 정상으로 열렸다.** 접두사는 XML 에서 의미를 갖지 않으므로
+  표준대로 동작한 것이다. 그래서 등록을 걷어냈다.
+  → 이때 **시험을 같은 프로세스에서 하면 속는다**: `register_namespace` 는 모듈 전역
+  레지스트리를 영구히 바꾸므로, 등록하는 쪽을 먼저 돌리면 등록을 건너뛴 쪽도 접두사가
+  살아 있는 것처럼 보인다. 실제로 그렇게 한 번 잘못 읽었다 — 별도 프로세스에서 다시 쟀다.
+- **의존성 하한은 '실제로 돌려 본 버전'으로 적는다**(같은 날). OSV-Scanner 가 걸린 것은
+  설치본이 아니라 `requirements.txt` 의 **하한**이었다(`pypdf>=4.0` → PYSEC 55건).
+  설치된 것은 훨씬 최신이어서 `pip-audit` 은 "No known vulnerabilities" 였다.
+  직접 import 하지 않는 간접 의존성(`anyio`·`idna`·`starlette`·`certifi`·`httpcore`)도
+  하한을 적어 둔다 — 적지 않으면 스캐너가 '허용되는 가장 낮은 버전'을 골라 검사한다.
+- `nosemgrep` 주석은 **믿을 수 없다**. 서버 스캐너가 억제를 무시하도록 돌릴 수 있다
+  (실제로 무시됐다). 규칙에 걸리는 코드는 억제하지 말고 없애거나, 담당자와 협의한다.
+
 ## 코드 습관·테스트
 
 - **라우트 데코레이터 위치 주의**: 집계 로직을 함수로 뺄 때 `@router.get("/dashboard")`

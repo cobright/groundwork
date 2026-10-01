@@ -27,14 +27,11 @@ from __future__ import annotations
 import io
 import shutil
 import tempfile
-import defusedxml.ElementTree as ET   # 파싱·직렬화(fromstring·iterparse·tostring)
-# 생성(SubElement)·트리 묶기(ElementTree)·네임스페이스 등록은 defusedxml 에 없다 —
-# 바깥에서 온 XML 을 '읽는' 일이 아니라 우리가 '쓰는' 일이라 XXE 와 무관하기 때문이다.
-# 접두사 등록만은 표준 모듈에 있다. 직렬화할 때 접두사를 원본대로(hp:·hs:) 유지하기
-# 위한 전역 설정이며 바깥 XML 을 읽는 일이 아니다 — 그래서 이 한 줄은 defusedxml 로
-# 바꿀 수 없고, 바꿀 필요도 없다. 아래 _subelement()·ET.parse() 로 나머지 둘은 없앴다.
-# nosemgrep: python.lang.security.use-defused-xml
-from xml.etree.ElementTree import register_namespace as _et_register_ns
+import defusedxml.ElementTree as ET   # XML 은 모두 이쪽으로 — XXE·XML 폭탄을 막는다.
+# 표준 xml.etree 는 **쓰지 않는다**. 생성은 _subelement(), 트리는 ET.parse() 로 되고,
+# 네임스페이스 접두사 등록(register_namespace)은 아예 필요 없는 것으로 판명됐다 —
+# 접두사가 hp:·hs: 에서 ns0:·ns1: 로 바뀐 파일을 한글이 그대로 열어 준다(2026-10-01 실물 확인).
+# 접두사는 XML 에서 의미를 갖지 않으므로 표준대로 동작하는 것이다.
 import zipfile
 from copy import deepcopy
 from datetime import date
@@ -66,12 +63,6 @@ def _subelement(parent, tag):
     parent.append(el)
     return el
 
-
-
-def _register_ns(xml_bytes: bytes) -> None:
-    """원본 네임스페이스 접두어를 그대로 살려 저장되도록 등록."""
-    for _, (prefix, uri) in ET.iterparse(io.BytesIO(xml_bytes), events=["start-ns"]):
-        _et_register_ns(prefix, uri)
 
 
 def _text(p) -> str:
@@ -326,7 +317,6 @@ def fill_form(pid: int, form_bytes: bytes, org: str = "",
 
         sec_path = work / "Contents" / "section0.xml"
         raw = sec_path.read_bytes()
-        _register_ns(raw)
         tree_xml = ET.parse(io.BytesIO(raw))      # defusedxml 이 ElementTree 를 돌려준다
         root = tree_xml.getroot()
         tpl = Template(root)
