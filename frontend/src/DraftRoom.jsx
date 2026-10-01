@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { api, STRICTNESS } from "./api.js";
+import { PROVIDERS, api, STRICTNESS } from "./api.js";
 import { flatNumbers } from "./outlineModel.js";
 import { useColumns } from "./Columns.jsx";
 
-const PROVIDERS = [["", "설정대로"], ["openai", "OpenAI"], ["claude", "Claude"], ["gemini", "Gemini"]];
 
 export default function DraftRoom({ pid }) {
   const cols = useColumns("draft", { left: 300, right: 340 }, { left: "목차 항목", right: "근거" });

@@ -185,3 +185,9 @@ export const REVIEW_STATUS = ["미처리", "확인중", "반영", "일부반영"
 export const SEVERITY_ORDER = { "중대": 0, "중요": 1, "일반": 2, "참고": 3 };
 
 export const STATUSES = ["작성 전", "자료 부족", "작성 가능", "초고 작성 중", "사용자 확인", "확정"];
+
+// 작업 화면에서 고르는 회사. **여기 한 곳에서만 만든다** — 예전에는 네 화면이 각자
+// 하드코딩해서, 회사를 하나 더하면 한 화면만 고쳐지고 나머지는 모르는 상태가 됐다.
+// 이름은 백엔드 services/aiconfig.py 의 PROVIDERS 와 같아야 한다.
+export const PROVIDERS = [["", "설정대로"], ["openai", "OpenAI"], ["claude", "Claude"],
+                          ["gemini", "Gemini"], ["compat", "호환 서버"]];

@@ -8,16 +8,18 @@ services/aiconfig.py 의 TASKS·resolve() 가 정한다 — 배정이 호출부�
 from .openai_provider import OpenAIProvider
 from .claude_provider import ClaudeProvider
 from .gemini_provider import GeminiProvider
+from .compat_provider import CompatProvider
 from ..services import aiconfig
 
-_REGISTRY = {"openai": OpenAIProvider, "claude": ClaudeProvider, "gemini": GeminiProvider}
+_REGISTRY = {"openai": OpenAIProvider, "claude": ClaudeProvider, "gemini": GeminiProvider,
+             "compat": CompatProvider}
 
 
 def build(provider: str, model: str | None = None, tier: str = "base"):
     """회사·모델·등급을 직접 정해 만든다(설정 화면의 '저장 전 시험'·모델 목록이 쓴다)."""
     key = (provider or "").lower()
     if key not in _REGISTRY:
-        raise ValueError(f"알 수 없는 공급자: {key} (openai/claude/gemini 중 하나)")
+        raise ValueError(f"알 수 없는 공급자: {key} (openai/claude/gemini/compat 중 하나)")
     return _REGISTRY[key](model=model or None, tier=tier)
 
 

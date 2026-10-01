@@ -42,12 +42,13 @@ class TierIn(BaseModel):
 class AiConfigIn(BaseModel):
     tiers: dict[str, TierIn] = {}
     keys: dict[str, str | None] = {}   # None=그대로, ""=화면 설정 지움(.env 로 되돌림)
+    bases: dict[str, str | None] = {}  # 호환 서버 주소. 키와 같은 규칙으로 다룬다
 
 
 @router.put("/ai/config")
 def put_ai_config(body: AiConfigIn):
     try:
-        aiconfig.apply({k: v.model_dump() for k, v in body.tiers.items()}, body.keys)
+        aiconfig.apply({k: v.model_dump() for k, v in body.tiers.items()}, body.keys, body.bases)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return aiconfig.snapshot()
@@ -77,6 +78,8 @@ def test_ai(body: TestIn):
             model = (body.model or "").strip()
             if not model and name in aiconfig.RECOMMENDED:     # 비운 채 저장하면 쓰일 모델로 시험한다
                 model = aiconfig.model_if_blank(name, body.tier)
+            if not model and aiconfig.base_env_of(name):          # 호환 서버엔 추천값이 없다
+                model = aiconfig.value("COMPAT_MODEL")
             provider = build(name, model or None, body.tier)
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -100,7 +103,11 @@ def list_ai_models(provider: str):
         p = build(provider)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    if not p.key:
+    # 호환 서버는 키가 없어도 된다(인증 없는 사내 서버가 있다). 대신 **주소**가 있어야 한다.
+    if aiconfig.base_env_of(p.name):
+        if not getattr(p, "url", ""):
+            raise HTTPException(400, f"{p.label} 주소가 없습니다. 아래에서 서버 주소를 넣고 저장한 뒤 불러오세요.")
+    elif not p.key:
         raise HTTPException(400, f"{p.label} 키가 없습니다. 아래 'API 키'에서 키를 넣고 저장한 뒤 불러오세요.")
     try:
         models = p.list_models()

@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { api, REVIEW_STATUS, SEVERITY_ORDER } from "./api.js";
+import { PROVIDERS, api, REVIEW_STATUS, SEVERITY_ORDER } from "./api.js";
 import { flatNumbers } from "./outlineModel.js";
 import { useColumns } from "./Columns.jsx";
 
-const PROVIDERS = [["", "설정대로"], ["openai", "OpenAI"], ["claude", "Claude"], ["gemini", "Gemini"]];
 const KINDS = ["사실확인", "기술검토", "구조검토", "비평"];
 const PERSPECTIVES = ["군수", "예산부서", "사업부서", "평가위원", "의회"];
 const SEV_CLASS = { "중대": "sev-대", "중요": "sev-요", "일반": "sev-반", "참고": "sev-참" };

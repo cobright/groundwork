@@ -108,6 +108,7 @@ backend/
       forms.py           한글(HWPX) 양식 보관함 + 양식에 채워 내보내기
       templates.py       목차 틀 제공(GET /api/templates)
     providers/           LLM 어댑터: base(공통 요청·오류·생각 여유) + openai/claude/gemini
+                         + compat(주소를 고르는 OpenAI 호환 서버 — 공통기반 모델)
                          + registry(일 → 등급 → 회사·모델로 어댑터 만들기)
     agents/              검토 서브에이전트: fact_check(사실확인), technical(기술),
                          structure(구조), critique(비평) + common(공용 파싱/조립)
@@ -167,6 +168,9 @@ data_requests, settings`.
   등급별 모델: **기본** = `LLM_PROVIDER` + `{OPENAI|ANTHROPIC|GEMINI}_MODEL`(예전 키 그대로 — 기존 설치 호환),
   **빠름·정밀** = `AI_FAST_PROVIDER`·`AI_FAST_MODEL`, `AI_DEEP_PROVIDER`·`AI_DEEP_MODEL`.
   빠름·정밀의 회사가 비면 기본 등급을 통째로 따르고, 모델이 비면 등급별 추천값을 쓴다.
+  네 번째 공급자 **호환 서버**(`compat`)는 회사가 아니라 **주소**를 고른다: `ai.COMPAT_BASE_URL`·
+  `ai.COMPAT_API_KEY`(없어도 된다)·`ai.COMPAT_MODEL`(추천값이 없어 반드시 적는다).
+  자세한 논점은 `docs/design/compat-provider.md`.
 - `resources.note`: **담당자 메모**. 자료의 내용(`text`)이 아니라 그 자료를 어떻게 볼지에 대한
   사람의 말이다. 확정 해제·근거 변경신호를 켜지 않고, AI 분석에도 넘기지 않는다.
 - `resource_files`: 자료에 올린 **원본 파일**(BLOB) + 읽은 결과 요약. 자료 1건에 파일 1개.
@@ -196,6 +200,7 @@ data_requests, settings`.
 | 보고전·담당자 진술·보고전 뽑기(`spinoff`)·`family_of` | `docs/design/brief.md` |
 | 공모 가이드라인 읽기·분석·배점·정정 공고 (`guideline.py`·`guideline_analysis.py`·`gldiff.py`) | `docs/design/guideline.md` |
 | 부서 회신 파일·요청 대조·원본 보관 (`attachments.py`·`resource_analysis.py` 의 `ASKED_RULE`) | `docs/design/reply-files.md` |
+| 호환 서버(공통기반 모델)·AI 공급자를 더하기 (`compat_provider.py`·`aiconfig.PROVIDERS`) | `docs/design/compat-provider.md` |
 | 6장 규칙을 바꾸고 싶거나, 왜 그런 규칙인지 알아야 할 때 | `docs/lessons.md` (6장과 같은 소제목) |
 | 어떤 기능이 언제·왜 생겼는지, 끝난 할 일 | `docs/history.md` |
 | 책 쓰기 플랫폼(별개 제품) 기획 논의 | 별도 저장소 `D:\Desktop\mybooks` 의 `docs/plan.md` (2026-09-12 옮김) |
@@ -278,11 +283,16 @@ data_requests, settings`.
 - 키 입력칸의 빈 칸은 '그대로 두기', 지우기는 별도 버튼. 연결 시험을 반드시 함께 둔다.
 - AI 호출부는 **무슨 일인지(`task=`)만** 말한다. 일→등급 배정은 `aiconfig.TASKS` 한 곳, 등급→회사·모델은 `aiconfig.resolve()` 하나 — 설정 화면의 표시와 실제 호출이 같은 함수를 쓴다. AI 를 부르는 곳을 새로 만들면 `TASKS` 에 한 줄을 더한다.
 - 실패해도 다른 등급·회사로 **몰래 넘기지 않는다**(결과에 찍힌 모델 이름이 거짓이 된다). 실패는 그대로 알린다.
+- 공급자를 더할 때 **남의 칸을 돌려쓰지 않는다** — 주소만 바꿔 쓰면 결과에 찍히는 회사 이름이 거짓이 된다(`compat`).
+  추천 모델을 댈 수 없는 공급자는 `RECOMMENDED` 를 비우고 `model_source` 를 `"없음"` 으로 둔다(짐작한 이름을 '추천값'이라 하지 않는다).
+- 작업 화면의 회사 목록은 `api.js` 의 `PROVIDERS` 한 곳에서만 만든다(네 화면이 각자 하드코딩하던 것을 모았다).
 - 새 모델 대응은 `providers/base.py` 에서: 온도는 거부당하면 기억해 빼고(`rejected_sampling`), 출력 한도엔 생각 여유(`HEADROOM`)를 더하고, 답은 위치가 아니라 종류로 모은다. 키는 주소에 싣지 않는다(오류 문구에 섞인다).
 
 ### 코드 습관·테스트
 - 라우트 데코레이터는 **엔드포인트 함수에만** 붙인다(공용 함수 위에 붙어 422 → "[object Object]" 사고).
 - 테스트의 TestClient 는 컨텍스트매니저로 쓰지 않아 lifespan 이 안 돈다 → `init_db()` 를 명시 호출. LLM 은 fake provider 로 주입.
+- 설정(`ai.*`)을 건드리는 테스트는 **임시 DB** 로 돌린다 — `app.db` import 뒤 `db.DB_PATH`·`db.BACKUP_DIR` 를 갈아끼운다. 실DB로 돌리면 중간에 멈출 때 시험값이 남고, 다음 실행이 그것을 '원래 값'으로 기억해 오염이 굳는다.
+- 환경변수를 치우는 것은 `app.main` import **뒤에** 한다(`.env` 가 그때 로드되어 되살아난다 → 실제 API 를 호출해 버린다).
 
 ---
 

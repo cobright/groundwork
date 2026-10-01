@@ -112,5 +112,11 @@ def empty_reply(label: str, model: str, why: str = "") -> RuntimeError:
                         "출력 한도가 모자랐거나 응답이 막혔을 수 있습니다.")
 
 
+def no_base(label: str) -> RuntimeError:
+    """주소가 없는 것은 키가 없는 것과 할 일이 다르다 — 어디로 보낼지부터 정해야 한다."""
+    return RuntimeError(f"{label} 주소가 설정되지 않았습니다. 화면 위쪽 ‘설정 → AI 연결’에서 "
+                        "서버 주소(…/v1 로 끝나는 주소)를 넣어 주세요.")
+
+
 def no_key(label: str) -> RuntimeError:
     return RuntimeError(f"{label} 키가 설정되지 않았습니다. 화면 위쪽 ‘설정’에서 키를 넣어 주세요.")

@@ -6,6 +6,14 @@ import { api, reportApi } from "./api.js";
 //  ② AI 연결 — 등급(빠름·기본·정밀)마다 회사와 모델, 그리고 회사별 키
 //  ③ 자동 백업(돌아갈 자리가 있다는 것을 보여 준다)
 
+// 주소를 쓰는 공급자의 현재 주소를 입력칸으로 옮긴다. 키는 돌려받지 못하지만 주소는 받는다
+// (가릴 것이 없고, 눈으로 확인해야 하는 값이다).
+function basesFrom(c) {
+  const b = {};
+  (c.keys || []).filter((k) => k.needs_base).forEach((k) => { b[k.name] = k.base || ""; });
+  return b;
+}
+
 // 서버가 준 등급 설정을 입력 상태로 옮긴다(회사 "" = 기본과 같게 / 모델 "" = 추천값).
 function rowsFrom(c) {
   const r = {};
@@ -18,6 +26,7 @@ export default function SettingsModal({ onClose }) {
   const [ai, setAi] = useState(null);
   const [rows, setRows] = useState({});      // 등급별 {provider, model} — 저장 전 입력
   const [keys, setKeys] = useState({});      // 새로 입력한 키(빈 칸이면 그대로 둔다)
+  const [bases, setBases] = useState({});    // 호환 서버 주소(키와 달리 가려 둘 것이 없어 그대로 보인다)
   const [lists, setLists] = useState({});    // 회사별로 불러온 모델 목록
   const [backups, setBackups] = useState([]);
   const [busy, setBusy] = useState("");
@@ -28,7 +37,7 @@ export default function SettingsModal({ onClose }) {
     try {
       const [s, c, b] = await Promise.all([reportApi.getSettings(), api.getAiConfig(), api.listBackups()]);
       setMe({ author_name: s.author_name || "", author_dept: s.author_dept || "" });
-      setAi(c); setRows(rowsFrom(c)); setBackups(b.backups || []);
+      setAi(c); setRows(rowsFrom(c)); setBases(basesFrom(c)); setBackups(b.backups || []);
     } catch (e) { setErr(String(e.message || e)); }
   })(); }, []);
 
@@ -58,9 +67,15 @@ export default function SettingsModal({ onClose }) {
     });
     const k = {};
     Object.entries(keys).forEach(([name, v]) => { if ((v || "").trim()) k[name] = v.trim(); });   // 빈 칸 = 그대로 둔다
+    // 주소는 빈 칸도 뜻이 있다(지우기) — 그래서 '달라졌을 때만' 보낸다.
+    const bs = {};
+    (ai.keys || []).filter((x) => x.needs_base).forEach((x) => {
+      const now = (bases[x.name] || "").trim();
+      if (now !== (x.base || "")) bs[x.name] = now;
+    });
     try {
-      const c = await api.putAiConfig({ tiers, keys: k });
-      setAi(c); setRows(rowsFrom(c)); setKeys({});
+      const c = await api.putAiConfig({ tiers, keys: k, bases: bs });
+      setAi(c); setRows(rowsFrom(c)); setBases(basesFrom(c)); setKeys({});
       setMsg("저장했습니다. 프로그램을 다시 켜지 않아도 바로 적용됩니다.");
     } catch (e) { setErr(String(e.message || e)); } finally { setBusy(""); }
   }
@@ -128,7 +143,8 @@ export default function SettingsModal({ onClose }) {
               const cur = rows[t.tier] || { provider: "", model: "" };
               const inherit = t.tier !== "base" && !cur.provider;
               const prov = effProvider(t.tier);
-              const rec = inherit ? "기본 등급의 모델을 씁니다" : ((ai.recommended[prov] || {})[t.tier] || "");
+              const rec = inherit ? "기본 등급의 모델을 씁니다"
+                : (((ai.recommended[prov] || {})[t.tier] || "") || "모델 이름을 적어 주세요 (추천값이 없습니다)");
               const dirty = (cur.provider || "") !== (t.set_provider || "") || (cur.model || "").trim() !== (t.set_model || "");
               return (
                 <div key={t.tier} className={"aibox" + (t.tier === "base" ? " on" : "")}>
@@ -160,7 +176,9 @@ export default function SettingsModal({ onClose }) {
                     {dirty ? "저장하지 않은 변경이 있습니다."
                       : <>지금 쓰는 것: <b>{labelOf(t.provider)} · {t.model}</b>
                           {" "}({t.inherits ? "기본 등급을 따름" : `회사 ${t.provider_source} · 모델 ${t.model_source}`})</>}
-                    {prov && !keyOf(prov).key_set && <span className="warn"> — {labelOf(prov)} 키가 없습니다. 아래에서 넣어 주세요.</span>}
+                    {prov && (keyOf(prov).needs_base
+                      ? (!keyOf(prov).base && <span className="warn"> — {labelOf(prov)} 주소가 없습니다. 아래에서 넣어 주세요.</span>)
+                      : (!keyOf(prov).key_set && <span className="warn"> — {labelOf(prov)} 키가 없습니다. 아래에서 넣어 주세요.</span>))}
                   </p>
                 </div>
               );
@@ -170,15 +188,29 @@ export default function SettingsModal({ onClose }) {
             {ai.keys.map((p) => (
               <div key={p.name} className="aibox">
                 <div className="aihead"><b>{p.label}</b>
-                  <span className="hint">{p.key_set ? `키 ${p.key_masked} · ${p.key_source}` : "키가 없습니다"}
+                  <span className="hint">
+                    {p.key_set ? `키 ${p.key_masked} · ${p.key_source}`
+                      : (p.key_optional ? "키 없음 (인증이 없는 서버면 그대로 두세요)" : "키가 없습니다")}
+                    {p.needs_base && <> · {p.base ? `주소 ${p.base_source}` : "주소가 없습니다"}</>}
                     {p.used_by.length > 0 && <> · 쓰는 등급: {p.used_by.join("·")}</>}</span>
                 </div>
+                {/* 주소를 쓰는 공급자(호환 서버)는 주소가 먼저다 — 주소 없이는 키도 의미가 없다. */}
+                {p.needs_base && (
+                  <div className="keyrow">
+                    <input className="wide mono" autoComplete="off" placeholder="http://서버주소:포트/v1"
+                      value={bases[p.name] || ""} onChange={(e) => setBases({ ...bases, [p.name]: e.target.value })} />
+                  </div>
+                )}
                 <div className="keyrow">
                   <input type="password" autoComplete="off" className="wide"
                     placeholder={p.key_set ? "새 키를 넣을 때만 입력 (비워 두면 그대로)" : `키 붙여넣기 — ${p.where}`}
                     value={keys[p.name] || ""} onChange={(e) => setKeys({ ...keys, [p.name]: e.target.value })} />
                   {p.key_source === "화면" && <button className="btn sm stamp" onClick={() => clearKey(p.name)}>키 지우기</button>}
                 </div>
+                {p.needs_base && (
+                  <p className="hint">행정안전부 AI 공통기반이 지원하는 모델(엑사원·솔라·젬마·라마·GPT-OSS 등)처럼
+                    <b> OpenAI 호환 주소</b>를 내주는 서버를 그대로 붙입니다. 모델 이름은 등급 칸의 ‘목록’으로 불러올 수 있습니다.</p>
+                )}
               </div>
             ))}
             <button className="btn primary" disabled={busy === "ai"} onClick={saveAi}>AI 설정 저장</button>

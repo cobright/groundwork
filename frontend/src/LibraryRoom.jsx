@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { api, RESOURCE_KINDS } from "./api.js";
+import { PROVIDERS, api, RESOURCE_KINDS } from "./api.js";
 import { useColumns } from "./Columns.jsx";
 
-const PROVIDERS = [["", "설정대로"], ["openai", "OpenAI"], ["claude", "Claude"], ["gemini", "Gemini"]];
 const STATE_LABEL = { "분석 전": "분석 전", "분석 완료": "분석 완료(미확정)", "재분석 필요": "재분석 필요", "사용자 확정": "확정됨" };
 const EMPTY = { name: "", kind: "부서자료", source_org: "", base_date: "", text: "", note: "" };
 const arr = (v) => (Array.isArray(v) ? v : []);

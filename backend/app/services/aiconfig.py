@@ -40,6 +40,13 @@ PROVIDERS = [
      "model_env": "ANTHROPIC_MODEL", "where": "console.anthropic.com 의 API keys"},
     {"name": "gemini", "label": "Gemini", "key_env": "GEMINI_API_KEY",
      "model_env": "GEMINI_MODEL", "where": "aistudio.google.com 의 API key"},
+    # 네 번째는 회사가 아니라 **주소**다(v0.28). 행정안전부 AI 공통기반이 지원하는 모델
+    # (엑사원·솔라·젬마·라마·GPT-OSS 등)은 대개 OpenAI 호환 /v1/chat/completions 를 내준다.
+    # OpenAI 칸에 주소만 바꿔 넣는 길도 있었지만 그러면 결과에 'OpenAI'라고 찍힌다 —
+    # 모델 이름이 거짓이 되지 않게 칸을 따로 둔다. 키는 없을 수 있다(사내 서버).
+    {"name": "compat", "label": "호환 서버", "key_env": "COMPAT_API_KEY",
+     "model_env": "COMPAT_MODEL", "base_env": "COMPAT_BASE_URL",
+     "where": "기관이 올려 둔 서버의 키 — 인증이 없으면 비워 둡니다"},
 ]
 _BY_NAME = {p["name"]: p for p in PROVIDERS}
 
@@ -70,6 +77,9 @@ RECOMMENDED = {
     "openai": {"fast": "gpt-5.6-luna", "base": "gpt-5.6-terra", "deep": "gpt-5.6-sol"},
     "claude": {"fast": "claude-haiku-4-5", "base": "claude-sonnet-5", "deep": "claude-opus-5"},
     "gemini": {"fast": "gemini-3.5-flash-lite", "base": "gemini-3.8-flash", "deep": "gemini-3.1-pro-preview"},
+    # 호환 서버는 기관마다 올려 둔 모델이 다르다. 짐작해 넣으면 '모델을 찾지 못했습니다'가
+    # 되므로 추천값을 두지 않는다 — 비워 두면 화면이 '모델 이름을 적어야 한다'고 말한다.
+    "compat": {"fast": "", "base": "", "deep": ""},
 }
 
 # 정밀 모델은 생각이 길다. 60초로 끊으면 문서 전체 검토가 중간에 잘린다.
@@ -106,6 +116,17 @@ def source(env_name: str) -> str:
     if os.getenv(env_name, ""):
         return ".env"
     return "없음"
+
+
+def base_env_of(provider: str) -> str:
+    """그 공급자가 주소를 쓰는지(쓰면 설정 키 이름). 주소를 쓰는 것은 호환 서버뿐이다."""
+    return (_BY_NAME.get(provider or "") or {}).get("base_env", "")
+
+
+def base_url(provider: str) -> str:
+    """호환 서버의 주소(끝의 / 는 떼어 둔다 — 붙여 쓸 때 // 가 되지 않게)."""
+    env = base_env_of(provider)
+    return value(env).strip().rstrip("/") if env else ""
 
 
 def _tier_keys(tier: str) -> tuple[str, str]:
@@ -162,7 +183,8 @@ def resolve(tier: str = "base", override: str | None = None) -> dict:
         else:
             m, m_src = "", "없음"
     if not m:
-        m, m_src = RECOMMENDED[p]["base" if inherits else tier], "추천값"
+        rec = RECOMMENDED[p]["base" if inherits else tier]
+        m, m_src = rec, ("추천값" if rec else "없음")      # 호환 서버는 추천값이 없다
     return {"tier": tier, "provider": p, "provider_source": p_src, "model": m,
             "model_source": m_src, "inherits": inherits, "timeout": TIMEOUT[tier]}
 
@@ -199,8 +221,12 @@ def snapshot() -> dict:
     keys = []
     for p in PROVIDERS:
         key = value(p["key_env"])
+        env = p.get("base_env", "")
         keys.append({"name": p["name"], "label": p["label"], "where": p["where"],
                      "key_set": bool(key), "key_masked": mask(key), "key_source": source(p["key_env"]),
+                     # 주소를 쓰는 공급자는 키가 없어도 된다 — 없다고 경고하면 거짓말이 된다.
+                     "needs_base": bool(env), "key_optional": bool(env),
+                     "base": base_url(p["name"]), "base_source": source(env) if env else "없음",
                      "used_by": [t["label"] for t in tiers if t["provider"] == p["name"]]})
     return {"tiers": tiers, "keys": keys,
             "tasks": [{"task": k, "label": label, "tier": tier, "tier_label": _TIER_LABEL[tier]}
@@ -209,7 +235,8 @@ def snapshot() -> dict:
             "recommended": RECOMMENDED}
 
 
-def apply(tiers: dict | None = None, keys: dict | None = None) -> None:
+def apply(tiers: dict | None = None, keys: dict | None = None,
+          bases: dict | None = None) -> None:
     """화면에서 온 값을 저장한다. **보낸 것만** 바꾼다(None = 그대로, "" = 화면 값 지움).
 
     빈 문자열을 '지우기'로 삼는 이유: 화면에는 키를 다시 보여주지 않으므로,
@@ -228,7 +255,7 @@ def apply(tiers: dict | None = None, keys: dict | None = None) -> None:
         if prov is not None:
             prov = prov.strip().lower()
             if prov and prov not in _BY_NAME:
-                raise ValueError(f"알 수 없는 공급자: {prov} (openai/claude/gemini 중 하나)")
+                raise ValueError(f"알 수 없는 공급자: {prov} (openai/claude/gemini/compat 중 하나)")
         if tier == "base":
             if prov is not None:
                 _db_set("LLM_PROVIDER", prov)
@@ -247,3 +274,7 @@ def apply(tiers: dict | None = None, keys: dict | None = None) -> None:
         p = _BY_NAME.get(name)
         if p and key is not None:
             _db_set(p["key_env"], key.strip())
+    for name, url in (bases or {}).items():
+        env = base_env_of(name)
+        if env and url is not None:
+            _db_set(env, url.strip().rstrip("/"))
