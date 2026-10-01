@@ -68,7 +68,7 @@ if errorlevel 1 (
   exit /b 1
 )
 echo Checking that the packages actually load...
-".venv\Scripts\python.exe" -c "import fastapi, pydantic, httpx, dotenv, docx, openpyxl, pypdf"
+".venv\Scripts\python.exe" -c "import fastapi, pydantic, httpx, dotenv, docx, openpyxl, pypdf, defusedxml"
 if errorlevel 1 exit /b 1
 echo Backend environment OK.
 exit /b 0

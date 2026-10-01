@@ -27,7 +27,12 @@ from __future__ import annotations
 import io
 import shutil
 import tempfile
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET   # 파싱·직렬화(fromstring·iterparse·tostring)
+# 생성(SubElement)·트리 묶기(ElementTree)·네임스페이스 등록은 defusedxml 에 없다 —
+# 바깥에서 온 XML 을 '읽는' 일이 아니라 우리가 '쓰는' 일이라 XXE 와 무관하기 때문이다.
+from xml.etree.ElementTree import ElementTree as _ElementTree       # noqa: S405
+from xml.etree.ElementTree import SubElement as _SubElement         # noqa: S405
+from xml.etree.ElementTree import register_namespace as _et_register_ns  # noqa: S405
 import zipfile
 from copy import deepcopy
 from datetime import date
@@ -55,7 +60,7 @@ class FormError(ValueError):
 def _register_ns(xml_bytes: bytes) -> None:
     """원본 네임스페이스 접두어를 그대로 살려 저장되도록 등록."""
     for _, (prefix, uri) in ET.iterparse(io.BytesIO(xml_bytes), events=["start-ns"]):
-        ET.register_namespace(prefix, uri)
+        _et_register_ns(prefix, uri)
 
 
 def _text(p) -> str:
@@ -80,7 +85,7 @@ def _set_text(p, text: str) -> None:
         return
     t = runs[0].find(P + "t")
     if t is None:
-        t = ET.SubElement(runs[0], P + "t")
+        t = _SubElement(runs[0], P + "t")
     for sub in list(t):
         t.remove(sub)
     t.text = text
@@ -164,11 +169,11 @@ def _make_line(tpl: Template, lv: int, content: str):
         # 기호와 본문의 글꼴이 다른 경우(□ 가 그렇다): 기호 run 과 본문 run 을 나눠 채운다
         first = runs[0].find(P + "t")
         if first is None:
-            first = ET.SubElement(runs[0], P + "t")
+            first = _SubElement(runs[0], P + "t")
         first.text = f"{' ' * pad}{mark} "
         second = runs[1].find(P + "t")
         if second is None:
-            second = ET.SubElement(runs[1], P + "t")
+            second = _SubElement(runs[1], P + "t")
         for sub in list(second):
             second.remove(sub)
         second.text = content
@@ -311,7 +316,7 @@ def fill_form(pid: int, form_bytes: bytes, org: str = "",
         sec_path = work / "Contents" / "section0.xml"
         raw = sec_path.read_bytes()
         _register_ns(raw)
-        tree_xml = ET.ElementTree(ET.fromstring(raw))
+        tree_xml = _ElementTree(ET.fromstring(raw))
         root = tree_xml.getroot()
         tpl = Template(root)
 

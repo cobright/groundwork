@@ -1,9 +1,14 @@
-fastapi>=0.115
-uvicorn>=0.30
-h11>=0.14
-httpx>=0.27
-python-dotenv>=1.0
-pydantic>=2.7
-python-docx>=1.1
-openpyxl>=3.1
-pypdf>=4.0
+# 하한은 **실제로 돌려 본 버전**으로 둔다.
+# `>=4.0` 처럼 오래된 하한을 두면 취약점 검사가 그 하한을 검사해 걸린다
+# (2026-10-01 공공GitLab push 가 OSV-Scanner 에서 거부됐다).
+fastapi>=0.141
+uvicorn>=0.52
+h11>=0.16
+httpx>=0.28
+python-dotenv>=1.2
+pydantic>=2.13
+python-docx>=1.2
+openpyxl>=3.1.5
+pypdf>=6.19
+# hwpx·docx 의 XML 을 읽을 때 XXE·XML 폭탄을 막는다. 순수 파이썬이라 꾸러미에 담기 쉽다.
+defusedxml>=0.7.1

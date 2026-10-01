@@ -22,7 +22,7 @@ from __future__ import annotations
 import io
 import re
 import zipfile
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET   # 파싱은 안전한 쪽으로(XXE·XML 폭탄)
 
 P = "{http://www.hancom.co.kr/hwpml/2011/paragraph}"
 

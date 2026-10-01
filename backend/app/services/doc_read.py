@@ -29,7 +29,7 @@ import re
 import struct
 import zipfile
 import zlib
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET   # 파싱은 안전한 쪽으로(XXE·XML 폭탄)
 from html.parser import HTMLParser
 
 P = "{http://www.hancom.co.kr/hwpml/2011/paragraph}"
