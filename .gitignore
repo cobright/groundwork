@@ -18,3 +18,12 @@ _build_tmp/
 # OS
 .DS_Store
 Thumbs.db
+
+# 저장소 백업 압축 — 올리지 않는다.
+# 이 안에는 backend/.env(API 키 원문)·backend/data/workbench.db(업무 자료 전체)·
+# .git 히스토리가 그대로 들어 있다. `git add .` 한 번에 외부로 나갈 수 있어 못박아 둔다.
+bsh.zip
+*.zip
+
+# 루트에 실수로 생긴 빈 lockfile(프런트의 것은 frontend/ 안에 있다)
+/package-lock.json
