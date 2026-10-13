@@ -138,6 +138,7 @@ frontend/src/
   styles.css             상황실 톤 디자인 토큰(:root) + 전 화면 스타일
   Columns.jsx            세 칸 화면의 폭 조절(useColumns): 끌기 · 두 번 눌러 처음 폭 · 옆 칸 접기, 화면별 기억
 docs/                    결정의 경위·기능별 논점(5장 표를 보고 필요할 때 연다)
+tools/md2hwpx.py         마크다운 → 한글(.hwpx) 변환(표준 라이브러리만). 제출 문서 초안용
 모의데이터/               시연용 가상 공모사업 한 건(공고·정정공고 hwpx, 회신 xlsx/xls, docx, 진술) + 안내.txt
 portable/                포터블 조립 스크립트/런처/설명서
 ```
