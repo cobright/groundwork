@@ -202,6 +202,7 @@ data_requests, settings`.
 | 공모 가이드라인 읽기·분석·배점·정정 공고 (`guideline.py`·`guideline_analysis.py`·`gldiff.py`) | `docs/design/guideline.md` |
 | 부서 회신 파일·요청 대조·원본 보관 (`attachments.py`·`resource_analysis.py` 의 `ASKED_RULE`) | `docs/design/reply-files.md` |
 | 호환 서버(공통기반 모델)·AI 공급자를 더하기 (`compat_provider.py`·`aiconfig.PROVIDERS`) | `docs/design/compat-provider.md` |
+| **공공 AI 대전환 챌린지(11.11 제출) 준비 · 두 PC 작업 방식 · 행정망 PC 제약** | `docs/challenge-2026.md` |
 | 주민 설문(구성·정리·분석)·GIS 단계구분도 — **아직 안 만듦, 방향만** | `docs/design/survey.md` |
 | 6장 규칙을 바꾸고 싶거나, 왜 그런 규칙인지 알아야 할 때 | `docs/lessons.md` (6장과 같은 소제목) |
 | 어떤 기능이 언제·왜 생겼는지, 끝난 할 일 | `docs/history.md` |
