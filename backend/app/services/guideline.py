@@ -354,7 +354,11 @@ def parse_scoring(blocks: list[dict]) -> list[dict]:
         for row in b["rows"][1:]:
             if len(row) <= pcol:
                 continue
-            item = flat(" · ".join(dict.fromkeys(flat(x) for x in row[:pcol] if x.strip())))[:120] or flat(row[icol])
+            # 이름에는 세부기준 칸을 넣지 않는다(그것은 detail 로 따로 담는다).
+            # '평가 항목 │ 세부 평가기준 │ 배점' 꼴에서 넣어 버리면 score_label() 이 마지막 마디인
+            # 세부기준 문장을 이름으로 골라, 목차와 똑같은 항목명이 있어도 짝을 못 찾았다.
+            names = [x for i, x in enumerate(row[:pcol]) if i != dcol and x.strip()]
+            item = flat(" · ".join(dict.fromkeys(flat(x) for x in names)))[:120] or flat(row[icol])
             pts = row[pcol].strip()
             if not item.strip() or not pts:
                 continue
