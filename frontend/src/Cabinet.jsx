@@ -90,6 +90,7 @@ export default function Cabinet({ tick, onChanged }) {
                     <li>목차 {preview.counts.outline}개 · 작성된 본문 {preview.counts.drafts}개</li>
                     <li>이 업무에 등록한 자료 {preview.counts.resources}건 · 근거 {preview.counts.evidence}건</li>
                     <li>검토의견 {preview.counts.opinions}건 · 자료요청 {preview.counts.requests}건</li>
+                    {preview.counts.surveys > 0 && <li>설문 {preview.counts.surveys}건(근거 지도·문항 포함)</li>}
                   </ul>
                   <div className="del-safe">
                     공통자료실 자료는 삭제되지 않습니다{preview.counts.library_refs > 0

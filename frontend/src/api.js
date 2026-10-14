@@ -157,6 +157,25 @@ export const api = {
   uploadReceivedFile: (pid, rid, file) => req(
     `/projects/${pid}/requests/${rid}/received-file?filename=${encodeURIComponent(file.name)}`,
     { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file }),
+
+  // 주민 설문 — ①근거 지도 ②문항 설계 ③점검(규칙, 의견만) ④폼으로 옮기기. 응답 파일 정리·분석은 실물을 받은 뒤.
+  // 모든 쓰기는 설문 전체(설문·주장·문항·점검·폼 표)를 다시 돌려준다 — 점검이 바로 따라오게.
+  listSurveys: (pid) => req(`/projects/${pid}/surveys`),
+  createSurvey: (pid, body) => req(`/projects/${pid}/surveys`, { method: "POST", body: JSON.stringify(body || {}) }),
+  getSurvey: (sid) => req(`/surveys/${sid}`),
+  updateSurvey: (sid, patch) => req(`/surveys/${sid}`, { method: "PUT", body: JSON.stringify(patch) }),
+  surveyDeletePreview: (sid) => req(`/surveys/${sid}/delete-preview`),
+  deleteSurvey: (sid) => req(`/surveys/${sid}`, { method: "DELETE" }),
+  addClaim: (sid, body) => req(`/surveys/${sid}/claims`, { method: "POST", body: JSON.stringify(body) }),
+  updateClaim: (sid, cid, patch) => req(`/surveys/${sid}/claims/${cid}`, { method: "PUT", body: JSON.stringify(patch) }),
+  deleteClaim: (sid, cid) => req(`/surveys/${sid}/claims/${cid}`, { method: "DELETE" }),
+  // 통계로 받칠 주장 → 부서 자료요청(같은 주장은 한 번만 올라간다)
+  claimToRequest: (sid, cid, need) => req(`/surveys/${sid}/claims/${cid}/to-request`, { method: "POST", body: JSON.stringify({ need }) }),
+  addQuestion: (sid, body) => req(`/surveys/${sid}/questions`, { method: "POST", body: JSON.stringify(body) }),
+  updateQuestion: (sid, qid, patch) => req(`/surveys/${sid}/questions/${qid}`, { method: "PUT", body: JSON.stringify(patch) }),
+  deleteQuestion: (sid, qid) => req(`/surveys/${sid}/questions/${qid}`, { method: "DELETE" }),
+  orderQuestions: (sid, ids) => req(`/surveys/${sid}/questions-order`, { method: "PUT", body: JSON.stringify({ ids }) }),
+  surveyFormXlsxUrl: (sid) => `/api/surveys/${sid}/form.xlsx`,
 };
 
 export const REQUEST_STATUS = ["필요", "요청함", "회신옴", "반영", "보류"];

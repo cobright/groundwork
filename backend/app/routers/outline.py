@@ -87,7 +87,8 @@ def put_outline(pid: int, body: OutlineIn):
         for oid in gone_ops:
             c.execute("DELETE FROM review_opinions WHERE id=?", (oid,))
         # 근거·자료요청은 지우지 않는다(사람이 만든 기록) — 목차 연결만 끊는다.
-        for table in ("evidence", "data_requests"):
+        # 설문의 근거 지도도 같다 — 주장과 문항은 사람이 세운 설계라 남기고 연결만 끊는다.
+        for table in ("evidence", "data_requests", "survey_claims"):
             gone = [r["id"] for r in c.execute(
                 f"SELECT id, node_uid FROM {table} WHERE project_id=? AND node_uid IS NOT NULL",
                 (pid,)).fetchall() if r["node_uid"] not in keep]
@@ -252,4 +253,5 @@ def replace_preview(pid: int):
             # 근거·자료요청은 지워지지 않는다 — 목차 연결만 끊긴다.
             "evidence_links": one("SELECT COUNT(*) n FROM evidence WHERE project_id=? AND node_uid IS NOT NULL"),
             "request_links": one("SELECT COUNT(*) n FROM data_requests WHERE project_id=? AND node_uid IS NOT NULL"),
+            "survey_links": one("SELECT COUNT(*) n FROM survey_claims WHERE project_id=? AND node_uid IS NOT NULL"),
         }

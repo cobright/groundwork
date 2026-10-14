@@ -18,7 +18,7 @@ def _read_version() -> str:
 
 
 APP_VERSION = _read_version()
-from .routers import projects, outline, resources, review, export, library, requests, dashboard, report, inbox, forms, templates, statements, guidelines, setup
+from .routers import projects, outline, resources, review, export, library, requests, dashboard, report, inbox, forms, templates, statements, guidelines, setup, survey
 
 # .env 를 backend 폴더 기준으로 로드(작업 위치와 무관하게 동작 — 포터블 실행 대비)
 _ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
@@ -56,6 +56,7 @@ app.include_router(templates.router)
 app.include_router(statements.router)
 app.include_router(guidelines.router)
 app.include_router(setup.router)
+app.include_router(survey.router)
 
 
 @app.get("/api/health")

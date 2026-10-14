@@ -7,6 +7,7 @@ import ReviewRoom from "./ReviewRoom.jsx";
 import FinalRoom from "./FinalRoom.jsx";
 import LibraryRoom from "./LibraryRoom.jsx";
 import RequestRoom from "./RequestRoom.jsx";
+import SurveyRoom from "./SurveyRoom.jsx";
 import Dashboard from "./Dashboard.jsx";
 import ReportModal from "./ReportModal.jsx";
 import InboxRoom from "./InboxRoom.jsx";
@@ -187,6 +188,7 @@ export default function App() {
       if (w.opinions) lost.push(`· 검토의견 ${w.opinions}건이 삭제됩니다`);
       if (w.evidence_links) lost.push(`· 근거 ${w.evidence_links}건의 목차 연결이 끊깁니다 (근거 자체는 남습니다)`);
       if (w.request_links) lost.push(`· 자료요청 ${w.request_links}건의 목차 연결이 끊깁니다`);
+      if (w.survey_links) lost.push(`· 설문 근거 지도의 주장 ${w.survey_links}건의 목차 연결이 끊깁니다 (주장·문항은 남습니다)`);
     }
     return confirm(`‘${projName}’의 목차를 지우고 ${what} 새로 시작합니다.\n\n`
       + (lost.length ? lost.join("\n") + "\n\n" : "")
@@ -342,6 +344,7 @@ export default function App() {
             <button className={"tab" + (view === "draft" ? " on" : "")} onClick={() => setView("draft")}>초고 작성</button>
             <button className={"tab" + (view === "review" ? " on" : "")} onClick={() => setView("review")}>검토</button>
             <button className={"tab" + (view === "requests" ? " on" : "")} onClick={() => setView("requests")}>자료요청</button>
+            <button className={"tab" + (view === "survey" ? " on" : "")} onClick={() => setView("survey")}>설문</button>
             <button className={"tab" + (view === "final" ? " on" : "")} onClick={() => setView("final")}>최종본</button>
           </nav>
           <button className="help setbtn" onClick={() => setSetOpen(true)}
@@ -361,7 +364,7 @@ export default function App() {
         </div>
       )}
 
-      {view === "dashboard" ? <Dashboard onOpen={async (id, v) => { await loadProject(id); setView(v || "resources"); }} onChanged={afterProjectListChanged} /> : view === "inbox" ? <InboxRoom /> : view === "resources" ? <ResourceRoom pid={pid} /> : view === "library" ? <LibraryRoom /> : view === "draft" ? <DraftRoom pid={pid} /> : view === "review" ? <ReviewRoom pid={pid} /> : view === "requests" ? <RequestRoom pid={pid} /> : view === "final" ? <FinalRoom pid={pid} /> : (
+      {view === "dashboard" ? <Dashboard onOpen={async (id, v) => { await loadProject(id); setView(v || "resources"); }} onChanged={afterProjectListChanged} /> : view === "inbox" ? <InboxRoom /> : view === "resources" ? <ResourceRoom pid={pid} /> : view === "library" ? <LibraryRoom /> : view === "draft" ? <DraftRoom pid={pid} /> : view === "review" ? <ReviewRoom pid={pid} /> : view === "requests" ? <RequestRoom pid={pid} /> : view === "survey" ? <SurveyRoom pid={pid} /> : view === "final" ? <FinalRoom pid={pid} /> : (
       <main ref={cols.ref} className={cols.cls.trim() || undefined} style={cols.style}>
         {cols.handles}
         <section className="col left">

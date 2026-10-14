@@ -107,6 +107,8 @@ backend/
       statements.py      담당자 진술: 쪼개기(제안) → 채택(확정)
       forms.py           한글(HWPX) 양식 보관함 + 양식에 채워 내보내기
       templates.py       목차 틀 제공(GET /api/templates)
+      survey.py          주민 설문: ①근거 지도(주장↔설문/통계/진술) ②문항 설계 ④폼 옮기기 표(xlsx).
+                         판단(③점검·목표 응답 수·폼 유형)은 services/survey.py 의 규칙이 한다.
     providers/           LLM 어댑터: base(공통 요청·오류·생각 여유) + openai/claude/gemini
                          + compat(주소를 고르는 OpenAI 호환 서버 — 공통기반 모델)
                          + registry(일 → 등급 → 회사·모델로 어댑터 만들기)
@@ -127,6 +129,7 @@ backend/
                          progress.py  진행 지표를 사람의 말로(보고 줄 · 근거 주장)
                          gldiff.py    가이드라인 두 분석 견주기(정정 공고)
                          guideline.py 규칙으로 목차·카드·자료후보·배점표 뽑기
+                         survey.py    설문 점검(의견만)·목표 응답 수·폼 섹션 나누기 — AI 를 부르지 않는다
 frontend/src/
   App.jsx                헤더(지휘 바)+탭 라우팅. 뷰: dashboard/inbox/outline/
                          resources/library/draft/review/requests/final
@@ -134,7 +137,7 @@ frontend/src/
   outlineModel.js        목차 트리/카드 로직(번호는 렌더 시 계산)
   Dashboard.jsx          초기화면. 업무 카드(결재란 단계 띠 + 미해결 칩 + 마감).
   ResourceRoom / LibraryRoom / DraftRoom / ReviewRoom / RequestRoom /
-  FinalRoom / InboxRoom / ReportModal / GuidelineRoom.jsx
+  FinalRoom / InboxRoom / ReportModal / GuidelineRoom / SurveyRoom.jsx
   styles.css             상황실 톤 디자인 토큰(:root) + 전 화면 스타일
   Columns.jsx            세 칸 화면의 폭 조절(useColumns): 끌기 · 두 번 눌러 처음 폭 · 옆 칸 접기, 화면별 기억
 docs/                    결정의 경위·기능별 논점(5장 표를 보고 필요할 때 연다)
@@ -185,6 +188,9 @@ data_requests, settings`.
   근거표에 섞이면 `evidence_mark()` 가 무슨 표시를 붙일지 애매해진다.
   공모 한 건에 파일이 여럿 오므로(`doc_kind` = 공고/수립 가이드라인/서식) 업무당 N개.
   원본을 그대로 두는 이유: 정정 공고가 흔하고, 언제든 다시 읽을 수 있어야 한다.
+- `surveys`·`survey_claims`·`survey_questions`: 주민 설문. 근거 지도(`survey_claims`)는 목차 **uid** 에 묶인다 →
+  `put_outline` 은 연결만 끊고(주장·문항은 사람이 세운 설계라 남긴다), 스냅샷이 다시 잇는다(`survey_links`).
+  문항끼리(분석 계획·분기)는 문항 id 로 가리키고, 지운 문항을 가리키면 점검이 짚는다(말없이 빼지 않는다).
 - **마이그레이션 규칙**: `db.py`의 `_migrate()`가 `CREATE TABLE IF NOT EXISTS`
   이후 실행되어 ALTER/재구성으로 구버전 DB를 올린다. **항상 기존 데이터 보존**을
   검증할 것(구스키마 DB를 만들어 테스트). 파괴적 캐스케이드 방지를 위해 테이블
@@ -204,7 +210,7 @@ data_requests, settings`.
 | 부서 회신 파일·요청 대조·원본 보관 (`attachments.py`·`resource_analysis.py` 의 `ASKED_RULE`) | `docs/design/reply-files.md` |
 | 호환 서버(공통기반 모델)·AI 공급자를 더하기 (`compat_provider.py`·`aiconfig.PROVIDERS`) | `docs/design/compat-provider.md` |
 | **공공 AI 대전환 챌린지(11.11 제출) 준비 · 두 PC 작업 방식 · 행정망 PC 제약** | `docs/challenge-2026.md` |
-| 주민 설문(구성·정리·분석)·GIS 단계구분도 — **아직 안 만듦, 방향만** | `docs/design/survey.md` |
+| 주민 설문(구성·정리·분석)·GIS 단계구분도 — **①~④ 만듦(v0.29), ⑤~⑧·GIS 는 방향만** | `docs/design/survey.md` |
 | 6장 규칙을 바꾸고 싶거나, 왜 그런 규칙인지 알아야 할 때 | `docs/lessons.md` (6장과 같은 소제목) |
 | 어떤 기능이 언제·왜 생겼는지, 끝난 할 일 | `docs/history.md` |
 | 책 쓰기 플랫폼(별개 제품) 기획 논의 | 별도 저장소 `D:\Desktop\mybooks` 의 `docs/plan.md` (2026-09-12 옮김) |
@@ -316,11 +322,10 @@ data_requests, settings`.
   근거 없는 안내문은 없느니만 못하다. 실제로 그 유형을 써 보고 손이 멈추는 자리를 적는다.
 - 대시보드에서 심사 배점을 쓰고 싶어지면 그때 `writing_cards.score` 컬럼으로 올린다.
 
-**16. 주민 설문** — 2026-10-13 사용자와 방향을 정함. **챌린지 제출(11.11) 뒤에 시작**한다
-   (안내서가 "기능을 넓히기보다 핵심 기능의 안정"을 권한다). 핵심: **설계한 설문지가 곧 분석 틀** —
+**16. 주민 설문** — 2026-10-13 사용자와 방향을 정함. 핵심: **설계한 설문지가 곧 분석 틀** —
    계획서의 주장 → 근거 지도(통계로? 설문으로?) → 문항 → 분석 계획을 **수집 전에** 정하고, 구글폼·네이버폼
-   내보내기를 설계한 문항에 짝지어 규칙으로 집계한다. **실물 내보내기 파일(구글 1·네이버 1)을 받은 뒤** 시작.
-   자세한 것은 `docs/design/survey.md`.
+   내보내기를 설계한 문항에 짝지어 규칙으로 집계한다. 2026-10-14 사용자 결정으로 **①~④ 를 제출 전에 붙였다(v0.29)**.
+   남은 ⑥정리·⑦분석·⑧확정은 **실물 내보내기 파일(구글 1·네이버 1)을 받은 뒤** 시작. 자세한 것은 `docs/design/survey.md`.
 
 **17. GIS(확장 버전)** — 읍·면별 단계구분도 + 막대그래프. 표준 라이브러리로 SHP 를 읽는 좁은 범위부터.
    설문 다음. `docs/design/survey.md` 끝 '확장 버전'.

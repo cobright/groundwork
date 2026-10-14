@@ -283,6 +283,59 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE
             );
+            -- 주민 설문(docs/design/survey.md). "설계한 설문지가 곧 분석 틀이다" —
+            -- 계획서의 주장(근거 지도) → 문항 → 분석 계획을 **수집 전에** 정해 둔다.
+            -- 지금은 ①근거 지도 ②문항 설계 ③점검 ④폼으로 옮기기까지(응답 파일은 실물을 받은 뒤).
+            CREATE TABLE IF NOT EXISTS surveys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                target TEXT NOT NULL DEFAULT '',      -- 조사 대상(예: 관내 경로당 회원)
+                method TEXT NOT NULL DEFAULT '온라인 폼',
+                period_from TEXT NOT NULL DEFAULT '',
+                period_to TEXT NOT NULL DEFAULT '',
+                population INTEGER NOT NULL DEFAULT 0, -- 대상 인구(목표 응답 수 계산에 쓴다)
+                margin REAL NOT NULL DEFAULT 5,        -- 원하는 오차범위(±%p, 95% 신뢰수준)
+                exported_at TEXT NOT NULL DEFAULT '',  -- 마지막으로 폼 옮기기 표를 내려받은 때
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            -- 근거 지도: 목차 항목의 주장 하나 ↔ 무엇으로 받치나(설문/통계/진술/미정).
+            -- 목차 uid 에 묶인다 → put_outline 이 연결만 끊고, 되돌리기가 다시 잇는다(근거와 같은 규칙).
+            CREATE TABLE IF NOT EXISTS survey_claims (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                survey_id INTEGER NOT NULL,
+                project_id INTEGER NOT NULL,
+                node_uid TEXT,
+                claim TEXT NOT NULL DEFAULT '',
+                basis TEXT NOT NULL DEFAULT '미정',
+                note TEXT NOT NULL DEFAULT '',
+                sort INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            -- 문항. 다른 문항을 가리킬 때(분석 계획의 교차, 분기)는 id 로 가리킨다(순서를 바꿔도 따라온다).
+            CREATE TABLE IF NOT EXISTS survey_questions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                survey_id INTEGER NOT NULL,
+                sort INTEGER NOT NULL DEFAULT 0,
+                text TEXT NOT NULL DEFAULT '',
+                qtype TEXT NOT NULL DEFAULT '단일',     -- 단일/복수/척도/순위/숫자/주관식
+                options TEXT NOT NULL DEFAULT '[]',    -- 보기(JSON 배열)
+                required INTEGER NOT NULL DEFAULT 1,
+                other_allowed INTEGER NOT NULL DEFAULT 0,
+                rank_k INTEGER NOT NULL DEFAULT 3,     -- 순위 문항: 몇 순위까지 받나
+                profile INTEGER NOT NULL DEFAULT 0,    -- 응답자 특성 문항(연령·읍면 등)
+                claim_id INTEGER,                      -- 받치는 주장(근거 지도)
+                cross_with TEXT NOT NULL DEFAULT '[]', -- 분석 계획: 견줄 문항 id(JSON 배열)
+                branch TEXT NOT NULL DEFAULT '{}',     -- 분기: {보기: 문항 id | "end"}
+                note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
+                FOREIGN KEY (claim_id) REFERENCES survey_claims(id) ON DELETE SET NULL
+            );
             CREATE TABLE IF NOT EXISTS hwpx_forms (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL DEFAULT '',        -- 사용자가 붙인 이름

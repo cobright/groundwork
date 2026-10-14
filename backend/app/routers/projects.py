@@ -92,6 +92,7 @@ def _counts(c, pid: int) -> dict:
         "drafts": one("SELECT COUNT(*) n FROM drafts WHERE project_id=? AND body<>''"),
         "opinions": one("SELECT COUNT(*) n FROM review_opinions WHERE project_id=?"),
         "requests": one("SELECT COUNT(*) n FROM data_requests WHERE project_id=?"),
+        "surveys": one("SELECT COUNT(*) n FROM surveys WHERE project_id=?"),
         # 공통자료실 자료는 project_id 가 NULL 이라 삭제되지 않는다(참조만 끊긴다).
         "library_refs": one("SELECT COUNT(*) n FROM resource_refs WHERE project_id=?"),
     }

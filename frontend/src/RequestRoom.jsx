@@ -3,7 +3,7 @@ import { api, REQUEST_STATUS } from "./api.js";
 import { flatNumbers } from "./outlineModel.js";
 
 const STATUS_CLASS = { "필요": "st-need", "요청함": "st-sent", "회신옴": "st-back", "반영": "st-done", "보류": "st-hold" };
-const ORIGIN_LABEL = { draft: "초고", review: "검토", user: "직접" };
+const ORIGIN_LABEL = { draft: "초고", review: "검토", user: "직접", survey: "설문" };
 
 export default function RequestRoom({ pid }) {
   const [items, setItems] = useState([]);

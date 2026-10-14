@@ -8,7 +8,7 @@
 
 무엇을 담는가:
   파괴적 교체(`put_outline`)가 없애는 것 전부 — 목차·집필카드·본문·검토의견,
-  그리고 근거·자료요청의 목차 연결. 근거와 자료요청 자체는 지워지지 않으므로
+  그리고 근거·자료요청·설문 근거 지도의 목차 연결. 이것들 자체는 지워지지 않으므로
   **연결(node_uid)만** 적어 둔다.
 
 되돌리기의 뜻(여기서 못박는다):
@@ -39,8 +39,10 @@ def _collect(c, pid: int) -> dict:
         "SELECT id,node_uid FROM evidence WHERE project_id=? AND node_uid IS NOT NULL", (pid,))}
     rq = {str(r["id"]): r["node_uid"] for r in c.execute(
         "SELECT id,node_uid FROM data_requests WHERE project_id=? AND node_uid IS NOT NULL", (pid,))}
+    sv = {str(r["id"]): r["node_uid"] for r in c.execute(
+        "SELECT id,node_uid FROM survey_claims WHERE project_id=? AND node_uid IS NOT NULL", (pid,))}
     return {"nodes": nodes, "cards": cards, "drafts": drafts, "opinions": ops,
-            "evidence_links": ev, "request_links": rq}
+            "evidence_links": ev, "request_links": rq, "survey_links": sv}
 
 
 def summarize(data: dict) -> str:
@@ -49,7 +51,7 @@ def summarize(data: dict) -> str:
     parts = [f"목차 {len(data['nodes'])}", f"집필카드 {len(data['cards'])}", f"본문 {bodies}"]
     if data["opinions"]:
         parts.append(f"검토의견 {len(data['opinions'])}")
-    links = len(data["evidence_links"]) + len(data["request_links"])
+    links = len(data["evidence_links"]) + len(data["request_links"]) + len(data.get("survey_links", {}))
     if links:
         parts.append(f"목차 연결 {links}")
     return " · ".join(parts)
@@ -110,7 +112,9 @@ def restore(c, pid: int, sid: int) -> dict:
 
     # ③ 근거·자료요청: 끊긴 연결만 다시 잇는다(사람이 그 뒤에 이어 둔 것은 덮지 않는다)
     relinked = 0
-    for table, links in (("evidence", data["evidence_links"]), ("data_requests", data["request_links"])):
+    # 설문 근거 지도(survey_links)는 v0.29 에 더했다 — 그 전에 찍은 스냅샷에는 없다.
+    for table, links in (("evidence", data["evidence_links"]), ("data_requests", data["request_links"]),
+                         ("survey_claims", data.get("survey_links", {}))):
         for rid, uid in links.items():
             cur = c.execute(f"SELECT node_uid FROM {table} WHERE id=? AND project_id=?", (int(rid), pid)).fetchone()
             if cur and cur["node_uid"] is None:
