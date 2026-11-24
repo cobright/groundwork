@@ -85,6 +85,8 @@ AI 를 보시려면 화면 맨 위 **설정 → AI 연결**에서 키를 넣고 
 > **개발을 이어받는 분(사람/클로드)은 먼저 [`CLAUDE.md`](./CLAUDE.md)를 읽으세요.**
 > 설계 원칙·구조·지금까지의 결정·주의사항이 모두 거기 있습니다.
 > 그 원칙과 충돌하는 변경은 하지 않습니다.
+> 기여하시려면 [`CONTRIBUTING.md`](./CONTRIBUTING.md)(사람용 요약)부터 보셔도 됩니다.
+> 테스트: `cd backend && pip install -r requirements-dev.txt && python -m pytest`
 
 ## 빠른 시작 (개발 PC)
 

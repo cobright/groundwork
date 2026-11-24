@@ -86,6 +86,8 @@ backend/
   requirements.txt       fastapi, uvicorn(플레인)+h11, httpx, python-dotenv,
                          pydantic, python-docx, openpyxl
   .env.example           LLM_PROVIDER + 각 provider 키/모델
+  requirements-dev.txt   개발·테스트 전용(pytest). 꾸러미·1_SETUP 에는 넣지 않는다
+  tests/                 pytest. conftest.py 가 임시 DB·가짜 AI(fake_ai)·모의데이터(mock_file)를 준다
   app/
     main.py              FastAPI 진입점. .env를 backend 기준으로 로드.
                          라우터 등록. frontend/dist 있으면 "/"로 정적 서빙.
@@ -144,6 +146,8 @@ docs/                    결정의 경위·기능별 논점(5장 표를 보고 �
 tools/md2hwpx.py         마크다운 → 한글(.hwpx) 변환(표준 라이브러리만). 제출 문서 초안용
 모의데이터/               시연용 가상 공모사업 한 건(공고·정정공고 hwpx, 회신 xlsx/xls, docx, 진술) + 안내.txt
 portable/                포터블 조립 스크립트/런처/설명서
+.github/workflows/ci.yml 푸시·PR 마다 pytest(윈도우·리눅스, 파이썬 3.11) + 화면 빌드
+CONTRIBUTING.md          사람 기여자용 요약(원칙 · 자주 걸리는 규칙). 규칙의 원본은 이 파일
 ```
 
 ---
@@ -363,7 +367,9 @@ data_requests, settings`.
 
 ## 8. 작업 습관(이 저장소에서 클로드에게)
 
-- 백엔드 변경은 **작은 테스트 스크립트로 검증**하고(엔드포인트 실호출 + 단언),
+- 백엔드 변경은 `backend/tests/` 에 **pytest 로 남겨** 검증한다(엔드포인트 실호출 + 단언,
+  `cd backend && python -m pytest`). 일회용 스크립트로 확인하고 버리지 않는다 — 다음 사람이 깨뜨려도 알 수 없다.
+  규칙을 지키는 테스트라면 일부러 규칙을 깨 보아 실제로 실패하는지도 본다.
   마이그레이션은 **구스키마 DB로 데이터 보존까지** 확인한 뒤 마무리한다.
 - 프런트 변경은 `npm run build`로 컴파일 통과를 확인한다.
 - 사용자는 한국어로 소통한다. 답변·주석·UI 문구는 한국어. 과장 없이, 한 결정의
