@@ -4,7 +4,7 @@ import { flatNumbers } from "./outlineModel.js";
 import { useColumns } from "./Columns.jsx";
 
 const KINDS = ["사실확인", "기술검토", "구조검토", "비평"];
-const PERSPECTIVES = ["군수", "예산부서", "사업부서", "평가위원", "의회"];
+const PERSPECTIVES = ["기관장", "예산부서", "사업부서", "평가위원", "의회·이사회"];
 const SEV_CLASS = { "중대": "sev-대", "중요": "sev-요", "일반": "sev-반", "참고": "sev-참" };
 const KIND_CLASS = { "사실확인": "k-fact", "기술검토": "k-tech", "구조검토": "k-struct", "비평": "k-crit" };
 
@@ -17,7 +17,7 @@ export default function ReviewRoom({ pid }) {
   const [opinions, setOpinions] = useState([]);
   const [scope, setScope] = useState("node");     // node | whole
   const [provider, setProvider] = useState("");
-  const [perspective, setPerspective] = useState("군수");
+  const [perspective, setPerspective] = useState("기관장");
   const [running, setRunning] = useState("");      // 실행 중인 검토 종류
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");           // 실행 결과 안내(예: 문서가 길어 일부만 검토)

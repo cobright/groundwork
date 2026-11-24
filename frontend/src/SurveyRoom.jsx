@@ -15,7 +15,7 @@ const STEPS = [
 const BASES = ["미정", "설문", "통계", "진술"];
 const BASIS_HINT = {
   "설문": "주민의 원함·불만·선호·의향 — 설문으로만 알 수 있는 것",
-  "통계": "인구·시설 수처럼 행정 자료로 증명할 것 — 설문으로 재면 틀린다",
+  "통계": "인구·시설 수처럼 공식 통계·기관 자료로 증명할 것 — 설문으로 재면 틀린다",
   "진술": "담당자가 아는 사실(운영 방식·예산 등)",
   "미정": "아직 정하지 않음",
 };
@@ -329,7 +329,7 @@ function ItemsStep({ sid, claims, qs, qnum, run, focus, setFocus }) {
       <div className="sv-lead">
         <b>분석은 설문 전에 정합니다.</b> 문항마다 “무엇과 견줄지”(예: 이용 의향 × 연령대)를 미리 고르면
         결과가 들어오는 순간 집계가 정해지고, 결과를 본 뒤 유리한 것만 골라 쓰는 일도 막힙니다.
-        연령대·읍면 같은 <b>응답자 특성 문항</b>의 보기는 주민등록 통계 구분과 똑같이 만드세요.
+        연령대·지역(읍면 등) 같은 <b>응답자 특성 문항</b>의 보기는 주민등록 통계 구분과 똑같이 만드세요.
       </div>
       {qs.length === 0 && <div className="empty">문항이 없습니다. <b>+ 문항</b>을 누르거나, 근거 지도에서 ‘설문’으로 정한 주장의 <b>문항 더하기</b>로 시작하세요.</div>}
       {qs.map((q, i) => <Question key={q.id} {...{ sid, q, i, qs, qnum, claims, run, focus, add, move, del }} />)}
@@ -380,7 +380,7 @@ function Question({ sid, q, i, qs, qnum, claims, run, focus, add, move, del }) {
         <label className="chk"><input type="checkbox" checked={q.required} onChange={(e) => save({ required: e.target.checked })} /> 필수</label>
         {(q.qtype === "단일" || q.qtype === "복수") &&
           <label className="chk"><input type="checkbox" checked={q.other_allowed} onChange={(e) => save({ other_allowed: e.target.checked })} /> 기타(직접 입력)</label>}
-        <label className="chk" title="연령대·읍면처럼 응답자를 나누는 문항 — 분석의 '× 연령대'에 쓰이고, 실제 인구와 견주는 데 쓰입니다">
+        <label className="chk" title="연령대·지역처럼 응답자를 나누는 문항 — 분석의 '× 연령대'에 쓰이고, 실제 인구와 견주는 데 쓰입니다">
           <input type="checkbox" checked={q.profile} onChange={(e) => save({ profile: e.target.checked })} /> 응답자 특성</label>
       </div>
       {choice && (
@@ -451,7 +451,7 @@ function FormStep({ sid, full, done, setDone, setMsg, reload }) {
       <div className="chead"><p className="eyebrow m0">④ 폼으로 옮기기 — 구글폼·네이버폼에 그대로 옮겨 적는 표</p>
         <button className="btn primary sm" disabled={!rows.length} onClick={download}>xlsx 내려받기</button></div>
       <div className="sv-lead">
-        폼을 워크벤치가 직접 만들지 않습니다(계정 인증이 필요하고 행정망에서 막히기 쉽습니다). 이 표를 보며 옮겨 적으세요.
+        폼을 워크벤치가 직접 만들지 않습니다(계정 인증이 필요하고 기관 내부망에서 막히기 쉽습니다). 이 표를 보며 옮겨 적으세요.
         폼의 분기는 <b>섹션 단위</b>로 움직이므로 섹션을 미리 나눠 두었습니다.
         {heavy > 0 && <> <span className="sv-warn">점검에 ‘중요’ {heavy}건이 남아 있습니다 — 수집을 시작하면 고칠 수 없는 것이 있습니다.</span></>}
       </div>

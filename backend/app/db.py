@@ -363,8 +363,14 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE projects ADD COLUMN archived_at TEXT NOT NULL DEFAULT ''")
     if "archive_note" not in pcols:
         conn.execute("ALTER TABLE projects ADD COLUMN archive_note TEXT NOT NULL DEFAULT ''")
+    # 문서 유형 이름을 중립어로 바꿨다(2026-11-24). 이미 만든 업무도 새 이름으로 옮긴다 —
+    # 옛 이름으로 남으면 틀 목록에서 못 찾아 보고전 뽑기 등이 '모르는 유형'이 된다. 여러 번 돌아도 같다.
+    from .services.templates import RENAMED_TYPES
+    for old, new in RENAMED_TYPES.items():
+        conn.execute("UPDATE projects SET doc_type=? WHERE doc_type=?", (new, old))
+
     # evidence.source_changed
-    ecols = [r["name"] for r in conn.execute("PRAGMA table_info(evidence)").fetchall()]
+    ecols =[r["name"] for r in conn.execute("PRAGMA table_info(evidence)").fetchall()]
     if "source_changed" not in ecols:
         conn.execute("ALTER TABLE evidence ADD COLUMN source_changed INTEGER NOT NULL DEFAULT 0")
 

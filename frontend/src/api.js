@@ -50,8 +50,8 @@ export const api = {
   generateDraft: (id, uid, strictness, provider) => req(`/projects/${id}/nodes/${uid}/draft/generate`, { method: "POST", body: JSON.stringify({ strictness, provider: provider || null }) }),
   saveDraftBody: (id, uid, body) => req(`/projects/${id}/nodes/${uid}/draft`, { method: "PUT", body: JSON.stringify({ body }) }),
   // 검토
-  runReview: (id, uid, kind, provider, perspective) => req(`/projects/${id}/nodes/${uid}/review/run`, { method: "POST", body: JSON.stringify({ kind, provider: provider || null, perspective: perspective || "군수" }) }),
-  runReviewWhole: (id, kind, provider, perspective) => req(`/projects/${id}/review/run`, { method: "POST", body: JSON.stringify({ kind, provider: provider || null, perspective: perspective || "군수" }) }),
+  runReview: (id, uid, kind, provider, perspective) => req(`/projects/${id}/nodes/${uid}/review/run`, { method: "POST", body: JSON.stringify({ kind, provider: provider || null, perspective: perspective || "기관장" }) }),
+  runReviewWhole: (id, kind, provider, perspective) => req(`/projects/${id}/review/run`, { method: "POST", body: JSON.stringify({ kind, provider: provider || null, perspective: perspective || "기관장" }) }),
   reviewPerspectives: (id) => req(`/projects/${id}/review/perspectives`),
   listReview: (id) => req(`/projects/${id}/review`),
   patchOpinion: (id, oid, patch) => req(`/projects/${id}/review/${oid}`, { method: "PUT", body: JSON.stringify(patch) }),

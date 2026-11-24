@@ -23,7 +23,7 @@ from ..providers.base import Message
 from ..providers.registry import get_provider
 
 SYSTEM = (
-    "당신은 한국 지방자치단체 담당자가 구술하듯 적은 메모를, 확인 가능한 '주장' 단위로 "
+    "당신은 문서 담당자가 구술하듯 적은 메모를, 확인 가능한 '주장' 단위로 "
     "쪼개는 일만 합니다.\n"
     "절대 규칙:\n"
     "1) 원문에 없는 사실·수치·기관명·날짜를 절대 추가하지 마십시오.\n"

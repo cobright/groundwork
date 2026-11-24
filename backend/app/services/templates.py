@@ -127,6 +127,13 @@ def load_templates(folder: Path = TEMPLATE_DIR) -> tuple[dict[str, dict], list[d
 # 목차안 조합 블록은 계획서 계열에서만 쓴다.
 DOC_TEMPLATES, BLOCKS = load_templates()
 
+# 이름을 바꾼 유형: 옛 이름 → 새 이름(2026-11-24, 지자체 전용 이름을 중립어로).
+# db._migrate() 가 이미 만든 업무의 doc_type 을 옮길 때 쓴다. 틀 내용은 그대로다.
+RENAMED_TYPES = {
+    "군정기획보고서": "기획보고서",
+    "군수 관심사업 추진계획서": "기관장 관심사업 추진계획서",
+}
+
 
 def family_of(doc_type: str) -> str:
     """문서 유형이 어느 계열인지. 모르면 '계획서'로 본다(기존 동작 유지).

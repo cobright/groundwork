@@ -152,12 +152,12 @@ def check(survey: dict, claims: list[dict], questions: list[dict]) -> list[dict]
     # 응답자 특성: 분석 계획이 '× 연령대·× 읍면' 을 쓰려면 있어야 하고, 보기는 통계 구분과 같아야 한다
     profiles = [q for q in questions if q.get("profile")]
     if questions and not profiles:
-        out.append(_op("일반", "구조", "응답자 특성 문항(연령대·읍면 등)이 없습니다 — 결과를 실제 인구와 견줄 수 없어 "
+        out.append(_op("일반", "구조", "응답자 특성 문항(연령대·지역 등)이 없습니다 — 결과를 실제 인구와 견줄 수 없어 "
                                      "설득력이 약해집니다. 수집이 끝난 뒤에는 되살릴 수 없습니다."))
     elif profiles:
         names = ", ".join(f"{num[q['id']]}번" for q in profiles)
         out.append(_op("참고", "구조", f"응답자 특성 문항({names})의 보기는 주민등록 통계의 구분과 **똑같이** 만드세요 "
-                                     f"(예: 연령 10세 구간, 읍·면 이름 그대로). 그래야 응답자 구성과 실제 인구를 나란히 놓을 수 있습니다."))
+                                     f"(예: 연령 10세 구간, 지역(읍·면 등) 이름 그대로). 그래야 응답자 구성과 실제 인구를 나란히 놓을 수 있습니다."))
 
     # 분량
     if questions:

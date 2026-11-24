@@ -55,7 +55,7 @@ def _run_kind(kind, scope_label, content, evidences, title, number, perspective,
 class ReviewRunIn(BaseModel):
     kind: str = "사실확인"          # 사실확인/기술검토/구조검토/비평
     provider: str | None = None
-    perspective: str = "군수"       # 비평에서 사용할 관점
+    perspective: str = "기관장"       # 비평에서 사용할 관점
 
 
 # ── 목차별 검토 ──

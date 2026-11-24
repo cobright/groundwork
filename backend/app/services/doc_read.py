@@ -572,7 +572,7 @@ def read_html_table(data: bytes) -> dict:
         raise ReadError("파일에서 표나 글자를 찾지 못했습니다.")
     return {"kind": "html표", "pages": 0, "blocks": blocks,
             "note": "확장자는 .xls 이지만 내용은 HTML 표인 파일이라 표로 읽었습니다"
-                    "(행정 시스템의 ‘엑셀 내려받기’가 흔히 이렇게 만듭니다)."}
+                    "(행정·업무 시스템의 ‘엑셀 내려받기’가 흔히 이렇게 만듭니다)."}
 
 
 def _decode(data: bytes) -> str:

@@ -173,7 +173,7 @@ export default function ResourceRoom({ pid }) {
             <p className="hint mb">아는 대로 편하게 적으세요. AI는 <b>주장 단위로 쪼개기만</b> 합니다 —
               없는 사실을 채우지 않습니다. 근거가 되는 것은 아래에서 고른 것뿐입니다.</p>
             <textarea className="wide mb" style={{ minHeight: 100 }}
-              placeholder={"예)\n어제 폐교 현장 다녀왔고 지붕 일부가 내려앉았음\n군수님이 이번 주 안에 대책 보고하라고 지시\n인근 주민 10여 가구가 민원 넣은 상태"}
+              placeholder={"예)\n어제 폐교 현장 다녀왔고 지붕 일부가 내려앉았음\n기관장이 이번 주 안에 대책 보고하라고 지시\n인근 주민 10여 가구가 민원 넣은 상태"}
               value={stmtText} onChange={(e) => setStmtText(e.target.value)} />
             <button className="btn primary wide" onClick={splitStatement} disabled={busy}>
               {busy ? "쪼개는 중…" : "주장으로 쪼개기"}

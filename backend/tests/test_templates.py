@@ -78,3 +78,24 @@ def test_유형_이름이_겹치면_막는다(tmp_path):
         _write(tmp_path, n, {"유형": "같은 이름", "계열": "계획서", "목차": ["a"]})
     with pytest.raises(TemplateError, match="겹칩니다"):
         load_templates(tmp_path)
+
+
+def test_옛_유형_이름의_업무는_켤_때_새_이름으로_옮겨진다(client, project):
+    from app import db
+    from app.services.templates import RENAMED_TYPES
+    with db.connect() as c:
+        c.execute("UPDATE projects SET doc_type='군정기획보고서' WHERE id=?", (project,))
+    db.init_db()            # 다시 켠 것과 같다
+    p = client.get(f"/api/projects/{project}").json()
+    p = p.get("project", p)
+    assert p["doc_type"] == "기획보고서"
+    assert all(new in DOC_TEMPLATES for new in RENAMED_TYPES.values())
+    assert not any(old in DOC_TEMPLATES for old in RENAMED_TYPES)
+
+
+def test_비평은_옛_관점_이름도_받는다(fake_ai):
+    from app.agents import critique
+    fp = fake_ai("[]", critique)
+    critique.review_critique("전체", "본문", perspective="군수")
+    system = fp.calls[0][0].content
+    assert "'기관장'" in system and "군수" not in system
