@@ -69,8 +69,8 @@ def fake_ai(monkeypatch):
     return install
 
 
-def mock_file(prefix: str) -> Path:
-    """모의데이터에서 이름이 prefix 로 시작하는 파일 하나."""
-    found = sorted(MOCK.glob(prefix + "*"))
+def mock_file(prefix: str, sub: str = "") -> Path:
+    """모의데이터(또는 그 아래 sub 폴더)에서 이름이 prefix 로 시작하는 파일 하나."""
+    found = sorted((MOCK / sub).glob(prefix + "*"))
     assert found, f"모의데이터에 {prefix}* 파일이 없습니다"
     return found[0]

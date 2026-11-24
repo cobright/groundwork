@@ -62,3 +62,15 @@ def test_견줄_것이_없으면_없다고_말한다(client, project):
     _analyze(client, g["id"])
     out = client.get(f"/api/guidelines/{g['id']}/compare").json()
     assert out["available"] is False and out["reason"]
+
+
+def test_지자체가_아닌_공고도_같은_규칙으로_읽는다(client, project):
+    """모의데이터/창업지원 — 창업기업의 지원사업 공고. 규칙이 지자체 용어에 묶여 있지 않은지 본다."""
+    f = mock_file("01", sub="창업지원")
+    g = client.post(f"/api/projects/{project}/guidelines", params={"filename": f.name},
+                    content=f.read_bytes()).json()
+    a = _analyze(client, g["id"])
+    assert len(a["node_paths"]) == 12
+    assert {p["label"] for p in a["scoring_match"]["pairs"]} == {"문제 인식", "실현 가능성", "성장 전략", "팀 구성"}
+    assert [m["label"] for m in a["scoring_match"]["missing_in_outline"]] == ["자부담 확보"]
+    assert "2027-03-19" in a["basic"]["마감일후보"]

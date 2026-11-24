@@ -145,6 +145,8 @@ frontend/src/
 docs/                    결정의 경위·기능별 논점(5장 표를 보고 필요할 때 연다)
 tools/md2hwpx.py         마크다운 → 한글(.hwpx) 변환(표준 라이브러리만). 제출 문서 초안용
 모의데이터/               시연용 가상 공모사업 한 건(공고·정정공고 hwpx, 회신 xlsx/xls, docx, 진술) + 안내.txt
+  창업지원/              지자체가 아닌 예: 창업기업의 지원사업 공고 hwpx · 시장·설문 xlsx · 대표자 진술
+docs/images/             README 스크린샷(모의데이터로만 찍는다 — 실DB 화면을 찍지 않는다)
 portable/                포터블 조립 스크립트/런처/설명서
 .github/workflows/ci.yml 푸시·PR 마다 pytest(윈도우·리눅스, 파이썬 3.11) + 화면 빌드
 CONTRIBUTING.md          사람 기여자용 요약(원칙 · 자주 걸리는 규칙). 규칙의 원본은 이 파일

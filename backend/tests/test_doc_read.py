@@ -76,3 +76,13 @@ def test_못_읽으면_이유를_말한다(data, hint):
         read_document(data, "x.bin")
     assert str(e.value).strip()
     assert hint in str(e.value)
+
+
+def test_창업지원_엑셀은_시트_두_장을_모두_읽는다():
+    f = mock_file("02", sub="창업지원")
+    doc = read_document(f.read_bytes(), f.name)
+    tables = _tables(doc)
+    assert len(tables) == 2
+    assert ["2026", "1490", "12.9"] in tables[0]
+    head = next(r for r in tables[1] if r[0] == "문항")
+    assert head[1:] == ["응답"] * 4          # 병합 머리글
