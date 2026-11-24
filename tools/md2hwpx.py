@@ -3,7 +3,7 @@
 
 사용:
   python tools/md2hwpx.py <뼈대.hwpx> <입력.md> <출력.hwpx>
-  예) python tools/md2hwpx.py "모의데이터/01_공고_2027년 스마트 경로당 조성 지원사업.hwpx"           docs/submission/구동안내서_초안.md docs/submission/구동안내서_초안.hwpx
+  예) python tools/md2hwpx.py "모의데이터/01_공고_2027년 스마트 경로당 조성 지원사업.hwpx"           초안.md 초안.hwpx
 
 뼈대: 한글로 저장한 hwpx 하나. 거기서 **스타일(header.xml)·구역 설정·문서 설정만** 가져오고
 본문은 새로 쓴다. 아래 STY 의 번호는 그 header.xml 안의 문단·글자 모양 번호라서, 뼈대를 다른

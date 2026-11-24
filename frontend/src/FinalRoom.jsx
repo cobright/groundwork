@@ -107,7 +107,7 @@ export default function FinalRoom({ pid }) {
             {chosen && chosen.supported && chosen.reason &&
               <div className="hint mb">{chosen.reason}</div>}
             <div className="formrow mb">
-              <input placeholder="기관명 (예: 보성군)" value={org} onChange={(e) => setOrg(e.target.value)} />
+              <input placeholder="기관명 (예: ○○군)" value={org} onChange={(e) => setOrg(e.target.value)} />
               <button className="btn ghost stamp sm" title="이 양식을 보관함에서 지웁니다"
                       onClick={() => removeForm(forms.find((f) => String(f.id) === String(formId)))}>양식 삭제</button>
             </div>
