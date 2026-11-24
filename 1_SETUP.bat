@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 echo ================================
-echo   AI Workbench - first-time setup
+echo   Groundwork - first-time setup
 echo ================================
 echo.
 set "PYCMD="

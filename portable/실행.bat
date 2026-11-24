@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title Haengjeong Workbench
+title Groundwork
 cd /d "%~dp0backend"
 "%~dp0python\python.exe" run.py
 echo.

@@ -257,7 +257,7 @@ def spinoff_project(pid: int, body: SpinoffIn):
                     "INSERT INTO resources(project_id,name,kind,source_org,base_date,trust,text,note,created_at) "
                     "VALUES(?,?,?,?,?,?,?,?,?)",
                     (new_id, f"‘{src['name']}’ 진행상황 ({today})", STATEMENT_KIND,
-                     (author["value"] if author else "") or "워크벤치", today, "진술", text, "", ts))
+                     (author["value"] if author else "") or "그라운드워크", today, "진술", text, "", ts))
                 rid = cur.lastrowid
                 c.execute(
                     "INSERT INTO resource_analysis(resource_id,summary,key_points,usable_for,cautions,"

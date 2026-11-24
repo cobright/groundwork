@@ -22,6 +22,6 @@ if __name__ == "__main__":
     import uvicorn
     # 서버가 뜬 뒤 브라우저 자동 열기(1.2초 지연)
     threading.Timer(1.2, _open_browser).start()
-    print("행정기획 워크벤치를 시작합니다...")
+    print("그라운드워크을 시작합니다...")
     print(f"브라우저에서 http://{HOST}:{PORT}/ 이 열립니다. (이 창은 닫지 마세요)")
     uvicorn.run("app.main:app", host=HOST, port=PORT, log_level="warning")

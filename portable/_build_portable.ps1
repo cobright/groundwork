@@ -1,10 +1,10 @@
-﻿# 행정기획 워크벤치 · 포터블 꾸러미 만들기
+﻿# 그라운드워크 · 포터블 꾸러미 만들기
 # 인터넷 되는 윈도우 PC에서 한 번만 실행하세요.
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $repo = Split-Path -Parent $PSScriptRoot
-$out  = Join-Path $repo "행정기획워크벤치_포터블"
+$out  = Join-Path $repo "그라운드워크_포터블"
 $tmp  = Join-Path $repo "_build_tmp"
 $pyver  = "3.11.9"
 $pyurl  = "https://www.python.org/ftp/python/$pyver/python-$pyver-embed-amd64.zip"
@@ -102,7 +102,7 @@ Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host "[8/8] 압축 파일 만들기..." -ForegroundColor Cyan
 # 폴더를 하나의 파일로 묶어 둔다. 메신저·GitLab 처럼 '파일 하나'만 받는 통로로 넘길 때 쓴다.
-# 풀면 '행정기획워크벤치_포터블' 폴더가 그대로 나온다. (.gitignore 가 *.zip 을 막아 저장소엔 안 들어간다)
+# 풀면 '그라운드워크_포터블' 폴더가 그대로 나온다. (.gitignore 가 *.zip 을 막아 저장소엔 안 들어간다)
 $zip = "$out.zip"
 Remove-Item $zip -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path $out -DestinationPath $zip -CompressionLevel Optimal

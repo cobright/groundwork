@@ -26,9 +26,9 @@ export const WORK_VIEWS = [
 ];
 
 export const LABELS = {
-  brandMark: "기",          // 왼쪽 위 네모 안 한 글자
-  brandBold: "행정기획",
-  brandRest: "워크벤치",
+  brandMark: "G",          // 왼쪽 위 네모 안 한 글자
+  brandBold: "그라운드워크",
+  brandRest: "",
   newProject: "+ 새 업무",
   report: "진행상황 보고",
   settings: "설정",

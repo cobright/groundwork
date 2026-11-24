@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""AI 행정기획 워크벤치 · FastAPI 진입점."""
+"""그라운드워크(Groundwork) · FastAPI 진입점."""
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="AI 행정기획 워크벤치", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="그라운드워크", version="0.1.0", lifespan=lifespan)
 
 # 개발 중 Vite(5173)에서 오는 요청 허용
 app.add_middleware(

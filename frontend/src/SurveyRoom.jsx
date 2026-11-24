@@ -5,7 +5,7 @@ import { useColumns } from "./Columns.jsx";
 
 // 주민 설문 — "설계한 설문지가 곧 분석 틀이다"(docs/design/survey.md).
 // 계획서의 주장 → 무엇으로 받치나(통계? 설문?) → 문항 → 분석 계획을 **수집 전에** 정한다.
-// 지금 만든 것은 ①~④. ⑤수집은 폼(워크벤치 밖)에서 하고, ⑥정리부터는 구글폼·네이버폼의
+// 지금 만든 것은 ①~④. ⑤수집은 폼(그라운드워크 밖)에서 하고, ⑥정리부터는 구글폼·네이버폼의
 // 실물 내보내기 파일을 받은 뒤에 만든다 — 그래서 띠에 보이되 흐리게 둔다(숨기지 않는다, 원칙 5).
 
 const STEPS = [
@@ -451,7 +451,7 @@ function FormStep({ sid, full, done, setDone, setMsg, reload }) {
       <div className="chead"><p className="eyebrow m0">④ 폼으로 옮기기 — 구글폼·네이버폼에 그대로 옮겨 적는 표</p>
         <button className="btn primary sm" disabled={!rows.length} onClick={download}>xlsx 내려받기</button></div>
       <div className="sv-lead">
-        폼을 워크벤치가 직접 만들지 않습니다(계정 인증이 필요하고 기관 내부망에서 막히기 쉽습니다). 이 표를 보며 옮겨 적으세요.
+        폼을 그라운드워크가 직접 만들지 않습니다(계정 인증이 필요하고 기관 내부망에서 막히기 쉽습니다). 이 표를 보며 옮겨 적으세요.
         폼의 분기는 <b>섹션 단위</b>로 움직이므로 섹션을 미리 나눠 두었습니다.
         {heavy > 0 && <> <span className="sv-warn">점검에 ‘중요’ {heavy}건이 남아 있습니다 — 수집을 시작하면 고칠 수 없는 것이 있습니다.</span></>}
       </div>
@@ -475,7 +475,7 @@ function FormStep({ sid, full, done, setDone, setMsg, reload }) {
             <input type="checkbox" checked={!!done[c.item]} onChange={(e) => setDone({ ...done, [c.item]: e.target.checked })} />
             <span><b>{c.item}</b> — {c.note}</span>
           </label>))}
-        <div className="hint mt8">이 체크는 저장하지 않습니다(폼은 워크벤치 밖에 있습니다). 내려받은 xlsx 의 점검표에 같은 목록이 있습니다.</div>
+        <div className="hint mt8">이 체크는 저장하지 않습니다(폼은 그라운드워크 밖에 있습니다). 내려받은 xlsx 의 점검표에 같은 목록이 있습니다.</div>
       </>)}
     </div>
   );
