@@ -123,3 +123,7 @@ Windows에서는 `1_SETUP.bat`(최초 1회) → `2_START.bat`(두 창 실행)도
 - `frontend/src/` React 화면(App + 각 Room + Dashboard/Inbox/ReportModal)
 
 자세한 설계 맥락은 **`CLAUDE.md`**.
+
+## 라이선스
+
+[MIT](./LICENSE). 함께 쓰는 패키지(fastapi·python-docx·openpyxl·pypdf 등)는 각자의 라이선스를 따릅니다.
