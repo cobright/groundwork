@@ -49,11 +49,16 @@ _LEVEL_ORDER = {"중대": 0, "중요": 1, "참고": 2}
 
 
 def norm_num(tok: str) -> str:
-    """'15,600' → '15600', '45.90' → '45.9', '26.0' → '26'."""
+    """'15,600' → '15600', '45.90' → '45.9', '26.0' → '26', '05' → '5'.
+
+    앞자리 0 을 떼는 이유(2026-11-24 품질 시험 C10): 원문 '2026-10-05' 를 초고가 '10월 5일'로 옮겼는데
+    '5'를 '05'와 다른 숫자로 보아 '원문에 없는 숫자'로 짚었다. 같은 수다."""
     s = tok.replace(",", "")
     if "." in s:
         s = s.rstrip("0").rstrip(".")
-    return s
+    int_part, dot, frac = s.partition(".")
+    int_part = int_part.lstrip("0") or "0"
+    return int_part + dot + frac
 
 
 def numbers_in(text: str) -> list[tuple[str, str, bool]]:

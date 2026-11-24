@@ -90,7 +90,7 @@ backend/
   requirements-dev.txt   개발·테스트 전용(pytest). 꾸러미·1_SETUP 에는 넣지 않는다
   tests/                 pytest. conftest.py 가 임시 DB·가짜 AI(fake_ai)·모의데이터(mock_file)를 준다
                          hwpx_sample.py 시험용 가상 보고서 양식(실제 기관 양식은 공개 저장소에 넣지 않는다)
-  evals/ai_eval.py       AI 품질 시험 묶음: 모의데이터로 실제 AI 를 돌려 **규칙으로** 채점(C1~C8 — C8 은 원문 인용이 글자 그대로인가). 요금이 든다 — 손으로 돌린다
+  evals/ai_eval.py       AI 품질 시험 묶음: 모의데이터로 실제 AI 를 돌려 **규칙으로** 채점(C1~C10 — C8 인용이 글자 그대로인가 · C9 검토 헛지적 · C10 두 번째 모의 업무). 요금이 든다 — 손으로 돌린다
   app/
     main.py              FastAPI 진입점. .env를 backend 기준으로 로드.
                          라우터 등록. frontend/dist 있으면 "/"로 정적 서빙.

@@ -171,3 +171,15 @@ def test_초고_생성은_정리한_것을_알려준다(setup, fake_ai):
     r = setup["client"].post(f"/api/projects/{setup['pid']}/nodes/n1/draft/generate", json={}).json()
     assert r["ai_suggestion"] == "인구는 15,600명이다(근거: E-001)."
     assert r["tidied"] and r["check"] == []
+
+
+def test_날짜를_옮겨_써도_앞자리_0_때문에_짚지_않는다():
+    """2026-11-24 실제 AI 품질 시험(C10): 원문 '2026-10-05' 를 초고가 '10월 5일'로 옮겼는데
+    '5' 를 '05' 와 다른 숫자로 보아 '원문에 없는 숫자'로 짚었다(헛경보)."""
+    from app.services.evidence_check import norm_num
+    assert [norm_num(x) for x in ("05", "0.5", "007", "0", "10", "1,200")] == ["5", "0.5", "7", "0", "10", "1200"]
+    index = {"E-004": {"mark": "확정", "source_changed": False, "quote_state": "일치", "plain": "", "claim": "",
+                       "nums": {n for _, n, _ in numbers_in("조사 기간 │ 2026-10-05 ~ 2026-10-16 │ 응답자 │ 120명(온라인)")}}}
+    sent = "고객 설문은 2026년 10월 5일부터 10월 16일까지 온라인 응답자 120명을 대상으로 제시되었다. (근거: E-004)"
+    assert check_text(sent, index) == []
+    assert check_text(sent.replace("120명", "150명"), index)[0]["kind"] == "원문에 없는 숫자"   # 진짜로 다른 수는 여전히 짚는다

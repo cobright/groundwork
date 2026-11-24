@@ -6,7 +6,7 @@
 채점은 AI 가 하지 않는다 — 근거 점검기(services/evidence_check)와 정규식이 한다. 그래야 모델을
 바꿔도 같은 잣대다.
 
-돌리는 법(개발 PC, 실제 AI 를 부른다 — 요금이 든다. 한 번에 AI 호출 약 6~8번):
+돌리는 법(개발 PC, 실제 AI 를 부른다 — 요금이 든다. 한 번에 AI 호출 약 9~11번):
     cd backend
     python -m evals.ai_eval                    # 설정 화면에 넣은 AI 설정(실DB 의 ai.*)과 .env 를 쓴다
     python -m evals.ai_eval --provider claude  # 회사를 골라서
@@ -23,6 +23,9 @@
   C6 가이드라인 정리 AI 가 실제로 정리했고(폴백 아님) 목차 12개를 그대로 두었는가
   C7 초고 지시문 준수 C2~C4 초고에서 목차 제목을 되풀이하거나 마크다운(#·**)을 쓰지 않았는가
                     (화면에는 정리기가 걷어 내므로 사용자 피해는 없다 — 지시문을 지키는지만 잰다)
+  C8 주장 후보 인용 C1 분석의 주장 후보마다 원문 인용이 자료 본문에 글자 그대로 있는가(근거 고리)
+  C9 검토 헛지적    원문 숫자만 옮긴 맞는 본문에 사실확인 검토가 중대·중요 의견을 내지 않는가(C5 의 짝)
+  C10 두 번째 업무  창업지원 모의데이터(지자체 아님)로 분석(지어낸 숫자·인용) → 채택 → 초고까지 원문 안에서인가
 """
 from __future__ import annotations
 
@@ -212,6 +215,56 @@ def run(provider: str | None = None, install_fake=None, keep_db: bool = False) -
               "통과" if not off else
               f"후보 {len(cands)}개 중 {len(off)}개의 인용이 원문에 없음: " + " / ".join(x.get("quote", "")[:30] for x in off[:3])),
              model=a.get("model", ""), output="\n".join(f"{x['claim']} ← “{x.get('quote', '')}”" for x in cands))
+
+        # ── C9 사실확인 검토의 헛지적 ──
+        # 원문 숫자만 옮기고 근거 번호를 단 '맞는' 본문에 중대·중요 의견을 내면 헛지적이다.
+        # C5(함정을 잡나)의 짝 — 잡기만 잘하고 멀쩡한 문장에도 경보를 울리면 사람이 검토를 안 본다.
+        pop_nos = ", ".join(e["ev_no"] for e in call("get", f"/api/projects/{pid}/evidence") if e["node_uid"] == "pop")
+        clean = (f"2026년 가온군의 65세 이상 인구는 15,600명이고 고령화율은 37.1%이다. (근거: {pop_nos})\n"
+                 f"2026년 독거노인은 4,530명이다. (근거: {pop_nos})")
+        call("put", f"/api/projects/{pid}/nodes/pop/draft", json={"body": clean})
+        call("post", f"/api/projects/{pid}/nodes/pop/review/run", json={"kind": "사실확인", "provider": P})
+        with db.connect() as c:
+            ops9 = [dict(r) for r in c.execute(
+                "SELECT severity,problem,model FROM review_opinions WHERE project_id=? AND node_uid='pop' "
+                "AND kind='사실확인'", (pid,)).fetchall()]
+        false_alarm = [o for o in ops9 if o["severity"] in ("중대", "중요")]
+        case("C9", "사실확인 검토: 맞는 본문에 중대·중요 의견을 내지 않음(헛지적)", not false_alarm,
+             "통과" + (f"(가벼운 의견 {len(ops9)}건)" if ops9 else "") if not false_alarm else
+             "헛지적: " + " / ".join(f"[{o['severity']}] {o['problem'][:70]}" for o in false_alarm),
+             model=ops9[0]["model"] if ops9 else "", output=clean)
+
+        # ── C10 두 번째 모의 업무(창업지원 — 지자체가 아닌 쓰임새): 분석·인용·초고가 원문 안에서 ──
+        f2 = next((MOCK / "창업지원").glob("02_*"))
+        pid2 = call("post", "/api/projects", json={"name": "AI 시험(창업)", "doc_type": "공모사업 계획서"})["id"]
+        call("put", f"/api/projects/{pid2}/outline", json={"nodes": [{"uid": "mkt", "sort": 0, "title": "시장 규모와 고객"}]})
+        r2 = call("post", f"/api/projects/{pid2}/resources/upload",
+                  params={"filename": f2.name, "name": "시장 규모와 고객 설문 결과", "source_org": "대표자"},
+                  content=f2.read_bytes())
+        a2 = call("post", f"/api/projects/{pid2}/resources/{r2['id']}/analyze", json={"provider": P})
+        nums2 = {n for _, n, _ in numbers_in(r2["text"])}
+        said2 = "\n".join([a2.get("summary", "")] + list(a2.get("key_points", [])))
+        made_up2 = sorted({tok for tok, n, _ in numbers_in(said2) if n not in nums2})
+        cands2 = a2.get("claims", [])
+        off2 = [x for x in cands2 if x.get("quote_state") != "일치"]
+        picks2 = [{"claim": x["claim"], "quote": x["quote"]} for x in cands2 if x.get("quote_state") == "일치"]
+        problems = ([f"분석이 지어낸 숫자: {', '.join(made_up2)}"] if made_up2 else []) + \
+                   (["주장 후보 없음"] if not cands2 else []) + \
+                   ([f"인용 {len(off2)}/{len(cands2)}개가 원문에 없음"] if off2 else [])
+        out10 = ""
+        if picks2:
+            call("post", f"/api/projects/{pid2}/resources/{r2['id']}/adopt", json={"claims": picks2, "node_uid": "mkt"})
+            g2 = call("post", f"/api/projects/{pid2}/nodes/mkt/draft/generate", json={"strictness": "엄격", "provider": P})
+            tidied += g2.get("tidied", [])
+            out10 = g2["ai_suggestion"]
+            bad2 = [x for x in g2["check"] if x["kind"] in ("없는 근거 번호", "원문에 없는 숫자", "따옴표 안 글이 원문에 없음")]
+            problems += [f"초고 {x['kind']}: {x['text'][:60]}" for x in bad2]
+            if "(근거: E-" not in out10 and "(근거:E-" not in out10:
+                problems.append("초고가 근거 번호를 달지 않음")
+        case("C10", "두 번째 모의 업무(창업지원): 분석·인용·초고가 원문 안에서", not problems,
+             "통과" if not problems else "; ".join(problems),
+             model=a2.get("model", ""), output=out10 or said2,
+             note=f"주장 후보 {len(cands2)}개 · 인용 일치 {len(cands2) - len(off2)}개")
     except Exception as e:                       # 키 없음·네트워크 등 — 그 자리에서 멈추고 그대로 알린다
         case("ERR", "실행 중단", False, str(e)[:500])
     finally:
