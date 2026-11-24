@@ -50,7 +50,7 @@ def bad(system, user):
                           ensure_ascii=False)
     if "초고" in system:
         if "노인 인구 현황" in user:
-            return "65세 이상 인구는 16,000명이다(근거: E-009)."
+            return "### 1. 노인 인구 현황\n65세 이상 인구는 **16,000명**이다(근거: E-009)."
         if "기대 효과" in user:
             return "이용자가 20% 늘어날 것이다."
         return "군비 30% 매칭을 확보했다(근거: E-002)."
@@ -76,22 +76,23 @@ def _installer(monkeypatch, answer):
 def test_잘하는_AI는_전부_통과한다(monkeypatch, tmp_path):
     rep = ai_eval.run(install_fake=_installer(monkeypatch, good))
     assert [(c["id"], c["ok"]) for c in rep["cases"]] == [
-        ("C1", True), ("C2", True), ("C3", True), ("C4", True), ("C5", True), ("C6", True)], rep["cases"]
+        ("C1", True), ("C2", True), ("C3", True), ("C4", True), ("C5", True), ("C6", True), ("C7", True)], rep["cases"]
 
 
 def test_환각하는_AI는_전부_걸린다(monkeypatch):
     rep = ai_eval.run(install_fake=_installer(monkeypatch, bad))
     got = {c["id"]: c for c in rep["cases"]}
-    assert [c["ok"] for c in rep["cases"]] == [False] * 6, rep["cases"]
+    assert [c["ok"] for c in rep["cases"]] == [False] * 7, rep["cases"]
     assert "99,999" in got["C1"]["detail"]
     assert "없는 근거 번호" in got["C2"]["detail"]
     assert "확보했다" in got["C4"]["detail"]
+    assert "목차 제목을 되풀이" in got["C7"]["detail"]
 
 
 def test_결과는_마크다운으로_남는다(monkeypatch):
     rep = ai_eval.run(install_fake=_installer(monkeypatch, good))
     md = ai_eval.to_markdown(rep)
-    assert "6 / 6 통과" in md and "fake-model" in md and "| C4 |" in md
+    assert "7 / 7 통과" in md and "fake-model" in md and "| C4 |" in md
 
 
 def test_실DB는_건드리지_않는다(monkeypatch):

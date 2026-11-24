@@ -38,7 +38,7 @@ export default function DraftRoom({ pid }) {
     try {
       const r = await api.generateDraft(pid, uid, strictness, provider);
       setCtx((c) => ({ ...c, draft: { ...c.draft, ai_suggestion: r.ai_suggestion, strictness: r.strictness, model: r.model },
-                       check: { ...(c.check || {}), suggestion: r.check || [] }, excluded: r.excluded || [] }));
+                       check: { ...(c.check || {}), suggestion: r.check || [] }, excluded: r.excluded || [], tidied: r.tidied || [] }));
     }
     catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
@@ -106,6 +106,9 @@ export default function DraftRoom({ pid }) {
                 {ctx.excluded?.length > 0 && (
                   <div className="sugnote">확정하지 않은 근거 {ctx.excluded.length}건({ctx.excluded.map((x) => x.ev_no).filter(Boolean).join(", ")})은
                     초고에 넘기지 않았습니다. 쓰려면 ‘자료·근거’에서 먼저 확정하세요.</div>
+                )}
+                {ctx.tidied?.length > 0 && (
+                  <div className="sugnote" title={ctx.tidied.join("\n")}>문서에 그대로 들어가지 않을 마크다운 표시(#·**)를 {ctx.tidied.length}곳 정리했습니다. 글의 내용은 그대로입니다.</div>
                 )}
                 <CheckList items={ctx.check?.suggestion} what="AI 제안" />
                 <div className="sugnote">AI 제안은 자동으로 본문에 들어가지 않습니다. 검토 후 반영하세요.</div>

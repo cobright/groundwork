@@ -128,3 +128,46 @@ def test_숫자_정규화와_양_판별():
 
 def test_근거가_없으면_빈_본문도_조용하다():
     assert check_text("", {}) == []
+
+
+def test_줄_끝_근거_번호는_그_줄의_앞_문장도_받친다(setup):
+    # 2026-11-24 실제 AI 출력에서 첫 문장을 '근거 없는 수치'로 잘못 짚었던 꼴
+    body = ("- 총인구는 2024년 43,610명에서 2026년 42,000명으로 감소하였다. "
+            "반면 65세 이상 인구는 같은 기간 14,840명에서 15,600명으로 증가하였다. (근거: E-001)")
+    assert _save(setup, body) == []
+
+
+def test_물려받은_문장도_숫자는_대조한다(setup):
+    found = _save(setup, "인구는 99,999명이다. 고령화가 심하다(근거: E-001).")
+    assert _kinds(found) == ["원문에 없는 숫자"] and "99,999" in found[0]["text"]
+
+
+def test_앞_문장의_번호는_뒤_문장을_받치지_않는다(setup):
+    found = _save(setup, "인구는 15,600명이다(근거: E-001). 경로당은 132개소다.")
+    assert _kinds(found) == ["근거 없는 수치 문장"]
+
+
+def test_번호_문제는_물려받은_문장에서_되풀이하지_않는다(setup):
+    found = _save(setup, "인구는 15,600명이다. 고령화율은 37.1%다(근거: E-009).")
+    assert _kinds(found) == ["없는 근거 번호"]        # 앞 문장에서 한 번 더 짚지 않는다
+
+
+# ── 초고의 마크다운 정리(draft_writing.tidy_markup) ──
+from app.skills.draft_writing import tidy_markup   # noqa: E402
+
+
+def test_목차_제목을_되풀이한_마크다운_줄은_빼고_나머지는_표시만_뗀다():
+    text, notes = tidy_markup("### 1. 노인 인구 현황\n\n- 인구는 **15,600명**이다.\n### 가. 세부", "노인 인구 현황", "2.1")
+    assert text == "- 인구는 15,600명이다.\n가. 세부"
+    assert len(notes) == 3
+
+
+def test_마크다운이_없으면_그대로_둔다():
+    assert tidy_markup("- 본문 #해시 아님\n○ 둘째", "x") == ("- 본문 #해시 아님\n○ 둘째", [])
+
+
+def test_초고_생성은_정리한_것을_알려준다(setup, fake_ai):
+    fake_ai("## 노인 인구 현황\n인구는 15,600명이다(근거: E-001).", draft_writing)
+    r = setup["client"].post(f"/api/projects/{setup['pid']}/nodes/n1/draft/generate", json={}).json()
+    assert r["ai_suggestion"] == "인구는 15,600명이다(근거: E-001)."
+    assert r["tidied"] and r["check"] == []

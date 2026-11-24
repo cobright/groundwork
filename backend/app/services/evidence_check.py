@@ -58,10 +58,11 @@ def numbers_in(text: str) -> list[tuple[str, str, bool]]:
     return out
 
 
-def split_sentences(text: str) -> list[str]:
-    """줄과 문장 끝(. ! ?)으로 나눈다. 문장 뒤에 따로 떨어진 '(근거: …)' 는 앞 문장에 붙인다."""
-    parts: list[str] = []
+def split_lines(text: str) -> list[list[str]]:
+    """줄마다 문장 목록. 문장 끝(. ! ?)으로 나누고, 따로 떨어진 '(근거: …)' 꼬리는 앞 문장에 붙인다."""
+    out: list[list[str]] = []
     for line in (text or "").splitlines():
+        parts: list[str] = []
         for seg in re.split(r"(?<=[.!?。])\s+", line.strip()):
             seg = seg.strip()
             if not seg:
@@ -70,7 +71,20 @@ def split_sentences(text: str) -> list[str]:
                 parts[-1] += " " + seg          # "…늘었다. (근거: E-001)" 의 꼬리
             else:
                 parts.append(seg)
-    return parts
+        if parts:
+            out.append(parts)
+    return out
+
+
+def split_sentences(text: str) -> list[str]:
+    return [s for line in split_lines(text) for s in line]
+
+
+def _cites(sent: str) -> list[str]:
+    got: list[str] = []
+    for m in _CITE.finditer(sent):
+        got += _EVNO.findall(m.group(1))
+    return list(dict.fromkeys(got))
 
 
 def evidence_index(c, pid: int) -> dict[str, dict]:
@@ -103,45 +117,63 @@ def _f(level, kind, sentence, text, **kw):
 def check_text(text: str, index: dict[str, dict]) -> list[dict]:
     """본문 한 덩어리를 점검해 의견 목록을 돌려준다(심각한 것부터)."""
     found: list[dict] = []
-    for sent in split_sentences(text):
-        cited: list[str] = []
-        for m in _CITE.finditer(sent):
-            cited += _EVNO.findall(m.group(1))
-        body = _CITE.sub(" ", sent)
-        nums = numbers_in(body)
-        marked = any(k in sent for k in _MARKED)
-
-        known = []
-        for no in dict.fromkeys(cited):             # 순서 유지 + 중복 제거
-            ev = index.get(no)
-            if ev is None:
-                found.append(_f("중대", "없는 근거 번호", sent,
-                                f"{no} 는 이 업무의 근거표에 없습니다. 번호가 틀렸거나 지워진 근거입니다.", ev=no))
-                continue
-            known.append((no, ev))
-            if ev["mark"] in ("미확정", "근거자료 없음"):
-                found.append(_f("중요", "미확정 근거 인용", sent,
-                                f"{no} 는 아직 확정하지 않은 자료입니다({ev['mark']}). 확정 전엔 근거가 아닙니다.", ev=no))
-            if ev["source_changed"]:
-                found.append(_f("중요", "원본이 바뀐 근거 인용", sent,
-                                f"{no} 의 자료가 수정됐습니다. 이 문장이 아직 맞는지 원문을 다시 보세요.", ev=no))
-
-        if known:
-            pool = set().union(*(ev["nums"] for _, ev in known))
-            missing = list(dict.fromkeys(tok for tok, n, _ in nums if n not in pool))
-            if missing:                              # 한 문장에 의견 하나 — 숫자마다 따로 내면 시끄럽다
-                nos = ", ".join(no for no, _ in known)
-                found.append(_f("중요", "원문에 없는 숫자", sent,
-                                f"{', '.join('‘' + t + '’' for t in missing[:5])} 를 {nos} 의 원문에서 그대로 "
-                                "찾지 못했습니다. 단위를 바꿔 썼거나 계산한 값이면 맞는지 확인만 하세요.",
-                                number=missing[0], ev=nos))
-        elif not cited and not marked:
-            qty = [tok for tok, _, is_qty in nums if is_qty]
-            if qty:
-                found.append(_f("중요", "근거 없는 수치 문장", sent,
-                                f"수치({', '.join(qty[:4])})가 있는데 근거 번호가 없습니다. "
-                                "근거를 달거나, 근거가 없으면 [확인 필요]로 표시하세요.", number=qty[0]))
+    for line in split_lines(text):
+        own = [_cites(s) for s in line]
+        # 줄 끝에 한 번 단 근거 번호는 그 줄의 앞 문장들도 받친다(흔한 쓰임 — 2026-11-24 실제 AI 출력에서
+        # "…감소하였다. 반면 …증가하였다. (근거: E-001)" 의 첫 문장을 '근거 없는 수치'로 잘못 짚었다).
+        # 뒤에서 앞으로만 물려준다 — 앞 문장의 번호가 뒤 문장까지 받친다고 보지는 않는다.
+        inherit: list[list[str]] = [[] for _ in line]
+        carry: list[str] = []
+        for i in range(len(line) - 1, -1, -1):
+            if own[i]:
+                carry = own[i]
+            elif carry:
+                inherit[i] = carry
+        for sent, mine, borrowed in zip(line, own, inherit):
+            found += _check_sentence(sent, mine, borrowed, index)
     found.sort(key=lambda f: _LEVEL_ORDER[f["level"]])
+    return found
+
+
+def _check_sentence(sent: str, cited: list[str], borrowed: list[str], index: dict[str, dict]) -> list[dict]:
+    """문장 하나. cited 는 이 문장에 직접 단 번호(번호 자체의 문제는 여기서만 짚는다),
+    borrowed 는 같은 줄 뒤 문장에서 물려받은 번호(숫자 대조에만 쓴다 — 같은 지적을 두 번 하지 않으려고)."""
+    found: list[dict] = []
+    body = _CITE.sub(" ", sent)
+    nums = numbers_in(body)
+    marked = any(k in sent for k in _MARKED)
+
+    known = []
+    for no in dict.fromkeys(cited):             # 순서 유지 + 중복 제거
+        ev = index.get(no)
+        if ev is None:
+            found.append(_f("중대", "없는 근거 번호", sent,
+                            f"{no} 는 이 업무의 근거표에 없습니다. 번호가 틀렸거나 지워진 근거입니다.", ev=no))
+            continue
+        known.append((no, ev))
+        if ev["mark"] in ("미확정", "근거자료 없음"):
+            found.append(_f("중요", "미확정 근거 인용", sent,
+                            f"{no} 는 아직 확정하지 않은 자료입니다({ev['mark']}). 확정 전엔 근거가 아닙니다.", ev=no))
+        if ev["source_changed"]:
+            found.append(_f("중요", "원본이 바뀐 근거 인용", sent,
+                            f"{no} 의 자료가 수정됐습니다. 이 문장이 아직 맞는지 원문을 다시 보세요.", ev=no))
+
+    known += [(no, index[no]) for no in borrowed if no in index]
+    if known:
+        pool = set().union(*(ev["nums"] for _, ev in known))
+        missing = list(dict.fromkeys(tok for tok, n, _ in nums if n not in pool))
+        if missing:                              # 한 문장에 의견 하나 — 숫자마다 따로 내면 시끄럽다
+            nos = ", ".join(no for no, _ in known)
+            found.append(_f("중요", "원문에 없는 숫자", sent,
+                            f"{', '.join('‘' + t + '’' for t in missing[:5])} 를 {nos} 의 원문에서 그대로 "
+                            "찾지 못했습니다. 단위를 바꿔 썼거나 계산한 값이면 맞는지 확인만 하세요.",
+                            number=missing[0], ev=nos))
+    elif not cited and not borrowed and not marked:
+        qty = [tok for tok, _, is_qty in nums if is_qty]
+        if qty:
+            found.append(_f("중요", "근거 없는 수치 문장", sent,
+                            f"수치({', '.join(qty[:4])})가 있는데 근거 번호가 없습니다. "
+                            "근거를 달거나, 근거가 없으면 [확인 필요]로 표시하세요.", number=qty[0]))
     return found
 
 

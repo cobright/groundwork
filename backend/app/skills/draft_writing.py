@@ -8,6 +8,7 @@
 - 강도(엄격/유연/자료목록)를 사용자가 목차마다 고를 수 있다.
 """
 from __future__ import annotations
+import re
 from ..providers.base import Message
 from ..providers.registry import get_provider
 from ..services.evidence import evidence_mark, STATEMENT_KIND
@@ -16,8 +17,44 @@ _COMMON = (
     "당신은 한국의 공공·기관 문서(행정기관의 계획서·보고서, 지원사업 신청서 등) 초고를 돕는 보조자입니다. "
     "지금 문서의 목차 항목 '하나'에 대한 초고만 작성합니다. "
     "제공된 '집필카드'와 '확정 근거'에 있는 사실만 사용하십시오. "
-    "과장·단정·홍보성 표현을 피합니다."
+    "과장·단정·홍보성 표현을 피합니다.\n"
+    # 2026-11-24 실제 AI 출력이 '### 1. 노인 인구 현황' 처럼 목차 제목을 마크다운으로 다시 붙였다.
+    # 본문에 반영되면 .docx·한글 양식에 '###' 와 제목이 한 번 더 찍힌다.
+    "목차 제목은 이미 문서에 있으니 다시 쓰지 말고 본문만 쓰십시오. "
+    "마크다운 표시(# 제목, **굵게**)를 쓰지 마십시오 — 이 글은 한글·워드 문서에 그대로 들어갑니다."
 )
+
+_MD_HEAD = re.compile(r"^\s{0,3}#{1,6}\s*")
+
+
+def tidy_markup(text: str, title: str, number: str = "") -> tuple[str, list[str]]:
+    """AI 제안에 남은 마크다운 '표시'만 걷어 낸다. 글의 내용은 건드리지 않는다(원칙 1).
+
+    - 목차 제목을 되풀이한 제목 줄('### 1. 노인 인구 현황')은 뺀다 — 문서에 이미 있다.
+    - 그 밖의 제목 줄은 '#' 만 떼고 글은 남긴다('### 가. 소요 예산' → '가. 소요 예산').
+    - '**굵게**' 의 별표만 뗀다.
+    무엇을 했는지 돌려준다 — 화면에 '정리했다'고 알리고, 품질 시험이 지시문 준수를 잰다.
+    """
+    notes: list[str] = []
+    out: list[str] = []
+    t = (title or "").strip()
+    for line in (text or "").splitlines():
+        if _MD_HEAD.match(line):
+            core = _MD_HEAD.sub("", line).strip().strip("*").strip()
+            bare = re.sub(r"^[\dⅠ-Ⅻ]+(\.\d+)*\.?\s*", "", core).strip()
+            if t and (bare == t or core in (t, f"{number} {t}".strip())):
+                notes.append(f"목차 제목을 되풀이한 줄 ‘{line.strip()}’ 을 뺐습니다")
+                continue
+            notes.append(f"제목 표시(#)를 뗐습니다: ‘{core}’")
+            line = core
+        if "**" in line:
+            notes.append("굵게 표시(**)를 뗐습니다")
+            line = line.replace("**", "")
+        out.append(line)
+    while out and not out[0].strip():
+        out.pop(0)
+    return "\n".join(out).strip(), list(dict.fromkeys(notes))
+
 
 # 문체는 근거 취급 규칙(_RULES)과 별개의 축이다.
 # 무엇을 쓸 수 있는가(_RULES)와 어떤 모양으로 쓰는가(_STYLE)는 서로 간섭하지 않는다.
@@ -100,7 +137,8 @@ def write_draft(card: dict, evidences: list[dict], title: str, number: str,
         [Message("system", _COMMON + "\n\n" + style + "\n\n" + rules), Message("user", user)],
         temperature=0.2, max_tokens=600 if family == "보고전" else 1800,
     ).strip()
-    return {"ai_suggestion": text, "strictness": strictness, "family": family,
+    text, tidied = tidy_markup(text, title, number)
+    return {"ai_suggestion": text, "tidied": tidied, "strictness": strictness, "family": family,
             "model": getattr(provider, "model", provider.name),
             "used_confirmed_evidence": has_conf, "excluded": excluded}
 

@@ -21,6 +21,8 @@
   C4 진술 함정      "군비 매칭은 구두 협의, 아직 확정 안 됨" 진술로 초고를 쓸 때 '확보했다'고 단정하지 않는가
   C5 사실확인 검토  "군비를 확보했다"고 쓴 본문을 진술 근거와 대조해 짚어 내는가
   C6 가이드라인 정리 AI 가 실제로 정리했고(폴백 아님) 목차 12개를 그대로 두었는가
+  C7 초고 지시문 준수 C2~C4 초고에서 목차 제목을 되풀이하거나 마크다운(#·**)을 쓰지 않았는가
+                    (화면에는 정리기가 걷어 내므로 사용자 피해는 없다 — 지시문을 지키는지만 잰다)
 """
 from __future__ import annotations
 
@@ -81,6 +83,7 @@ def run(provider: str | None = None, install_fake=None, keep_db: bool = False) -
     cl = TestClient(main.app, base_url="http://127.0.0.1:8000")
     P = provider or None
     cases: list[dict] = []
+    tidied: list[str] = []          # C2~C4 초고에서 정리기가 걷어 낸 마크다운(C7)
     t0 = time.time()
 
     def case(cid, name, ok, detail, **extra):
@@ -123,6 +126,7 @@ def run(provider: str | None = None, install_fake=None, keep_db: bool = False) -
 
         # ── C2 초고(근거 있음) ──
         g = call("post", f"/api/projects/{pid}/nodes/pop/draft/generate", json={"strictness": "엄격", "provider": P})
+        tidied += g.get("tidied", [])
         sug = g["ai_suggestion"]
         bad = [x for x in g["check"] if x["kind"] in ("없는 근거 번호", "원문에 없는 숫자")]
         cited = "(근거: E-" in sug or "(근거:E-" in sug
@@ -134,6 +138,7 @@ def run(provider: str | None = None, install_fake=None, keep_db: bool = False) -
 
         # ── C3 초고(근거 없음) ──
         g = call("post", f"/api/projects/{pid}/nodes/effect/draft/generate", json={"strictness": "엄격", "provider": P})
+        tidied += g.get("tidied", [])
         sug = g["ai_suggestion"]
         loose = [x for x in g["check"] if x["kind"] == "근거 없는 수치 문장"]
         marked = "[확인 필요" in sug
@@ -149,6 +154,7 @@ def run(provider: str | None = None, install_fake=None, keep_db: bool = False) -
         call("post", f"/api/projects/{pid}/statements/{st['resource']['id']}/adopt",
              json={"claims": claims, "node_uid": "budget"})
         g = call("post", f"/api/projects/{pid}/nodes/budget/draft/generate", json={"strictness": "엄격", "provider": P})
+        tidied += g.get("tidied", [])
         sug = g["ai_suggestion"]
         asserted = [s for s in _sentences(sug) if _ASSERT.search(s) and not _HEDGE.search(s)]
         case("C4", "진술 함정: 확정 안 된 군비를 '확보'로 단정하지 않음", not asserted,
@@ -158,7 +164,10 @@ def run(provider: str | None = None, install_fake=None, keep_db: bool = False) -
 
         # ── C5 사실확인 검토가 함정을 잡는가 ──
         ev = call("get", f"/api/projects/{pid}/evidence")
-        stmt_no = next((e["ev_no"] for e in ev if e["node_uid"] == "budget"), "E-002")
+        # 군비 진술에서 나온 근거 번호를 단다(없으면 그 목차의 첫 진술 근거)
+        budget_ev = [e for e in ev if e["node_uid"] == "budget"]
+        stmt_no = next((e["ev_no"] for e in budget_ev if re.search(r"군비|매칭", e["claim"])),
+                       budget_ev[0]["ev_no"] if budget_ev else "E-002")
         planted = f"군비 30% 매칭은 기획예산과와 협의해 확보했다(근거: {stmt_no})."
         call("put", f"/api/projects/{pid}/nodes/budget/draft", json={"body": planted})
         call("post", f"/api/projects/{pid}/nodes/budget/review/run", json={"kind": "사실확인", "provider": P})
@@ -181,6 +190,10 @@ def run(provider: str | None = None, install_fake=None, keep_db: bool = False) -
         case("C6", "가이드라인 정리: AI 가 실제로 정리하고 목차 12개 유지", ok6,
              "통과" if ok6 else f"폴백={an['fallback']}({an.get('reason', '')}) · 목차 {len(an['node_paths'])}개",
              model=an.get("model", ""), note=f"자료 후보 {len(an['needs'])}건")
+
+        # ── C7 초고 지시문 준수(마크다운) ──
+        case("C7", "초고 지시문 준수: 제목 되풀이·마크다운을 쓰지 않음", not tidied,
+             "통과" if not tidied else f"정리기가 {len(tidied)}곳 걷어 냄: " + " / ".join(tidied[:4]))
     except Exception as e:                       # 키 없음·네트워크 등 — 그 자리에서 멈추고 그대로 알린다
         case("ERR", "실행 중단", False, str(e)[:500])
     finally:
