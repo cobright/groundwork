@@ -90,6 +90,7 @@ backend/
   requirements-dev.txt   개발·테스트 전용(pytest). 꾸러미·1_SETUP 에는 넣지 않는다
   tests/                 pytest. conftest.py 가 임시 DB·가짜 AI(fake_ai)·모의데이터(mock_file)를 준다
                          hwpx_sample.py 시험용 가상 보고서 양식(실제 기관 양식은 공개 저장소에 넣지 않는다)
+  evals/progress_metrics.py 진보 지표(M1~M6): 실DB 를 사본으로 떠서 **읽기만** — 확정 본문·인용 근거·출처·검토 헛지적 대리. AI 안 부름
   evals/ai_eval.py       AI 품질 시험 묶음: 모의데이터로 실제 AI 를 돌려 **규칙으로** 채점(C1~C10 — C8 인용이 글자 그대로인가 · C9 검토 헛지적 · C10 두 번째 모의 업무). 요금이 든다 — 손으로 돌린다
   app/
     main.py              FastAPI 진입점. .env를 backend 기준으로 로드.
@@ -231,6 +232,7 @@ data_requests, settings`.
 | 배점 대비 충실도 지도(`score_map.py`·`parse_score_note`) | `docs/design/score-map.md` |
 | 호환 서버(공통기반 모델)·AI 공급자를 더하기 (`compat_provider.py`·`aiconfig.PROVIDERS`) | `docs/design/compat-provider.md` |
 | **두 PC 작업 방식 · 행정망 PC 제약** | `docs/work-setup.md` |
+| 실제 공모 한 건을 써 보며 멈춘 자리 기록·지표 다시 재기 | `docs/field-run.md` |
 | 주민 설문(구성·정리·분석)·GIS 단계구분도 — **①~④ 만듦(v0.29), ⑤~⑧·GIS 는 방향만** | `docs/design/survey.md` |
 | 6장 규칙을 바꾸고 싶거나, 왜 그런 규칙인지 알아야 할 때 | `docs/lessons.md` (6장과 같은 소제목) |
 | 어떤 기능이 언제·왜 생겼는지, 끝난 할 일 | `docs/history.md` |
