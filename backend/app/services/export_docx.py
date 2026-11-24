@@ -285,6 +285,9 @@ def final_check(pid) -> dict:
         # 근거 점검기(규칙): 본문의 숫자·근거 번호를 근거 원문과 대조한 의견
         from .evidence_check import check_project
         ev_found = check_project(c, pid)
+        # 항목 간 정합성(규칙): 같은 지표가 목차마다 다른 값으로 나오는 곳
+        from .consistency import check_sections
+        mismatched_values = check_sections(sections)
         # 2026-11-24 실제 업무(#6)에서 드러난 세 가지 — 부록이 사실과 다르게 읽히는 자리
         nos = evidence_numbers(c, pid)
         evs = [dict(r) for r in c.execute("SELECT * FROM evidence WHERE project_id=? ORDER BY id", (pid,))]
@@ -357,6 +360,10 @@ def final_check(pid) -> dict:
         group = [f for f in ev_found if f["kind"] == kind]
         items.append({"level": group[0]["level"], "label": f"근거 점검: {kind}",
                       "detail": [f"{f['section']} — {f['text']}" for f in group]})
+    if mismatched_values:
+        items.append({"level": "중요", "label": "같은 지표가 목차마다 다른 값으로 나옴",
+                      "detail": [f["text"] for f in mismatched_values]
+                      + ["낱말·연도·단위로 같은 지표라고 짐작한 것입니다 — 다른 것을 가리키면 그대로 두세요"]})
     if stmt:
         # 막지 않는다. 다만 보이게 한다 — 문서로 확인됐는지 판단하는 것은 사람의 몫이다.
         items.append({"level": "참고", "label": "담당자 진술로만 뒷받침되는 근거",

@@ -126,6 +126,7 @@ backend/
                          templates.py 문서 유형별 목차 틀의 유일한 출처(app/doc_templates/*.json 을 읽고 검사) + family_of(계열 판정)
                          evidence.py  목차에 연결된 근거 모으기(linked_evidence) + 표시(evidence_mark)
                          evidence_check.py 근거 점검기(규칙): 본문 숫자·근거 번호·인용 ↔ 자료 원문 대조 — AI 를 부르지 않는다
+                         consistency.py 항목 간 정합성(규칙): 같은 지표가 목차마다 다른 값인 곳 — 최종본 점검에 나온다
                          quote.py     원문 인용이 자료 본문에 그대로 있는가(공백·표 구분자만 무시) — 판정하는 유일한 자리
                          provenance.py 본문 이력(draft_versions) + 문장별 출처(AI 그대로/사람이 고침/사람이 씀)
                          numbering.py 근거 번호(E-번호)를 만드는 유일한 자리
@@ -225,6 +226,7 @@ data_requests, settings`.
 | 공모 가이드라인 읽기·분석·배점·정정 공고 (`guideline.py`·`guideline_analysis.py`·`gldiff.py`) | `docs/design/guideline.md` |
 | 부서 회신 파일·요청 대조·원본 보관 (`attachments.py`·`resource_analysis.py` 의 `ASKED_RULE`) | `docs/design/reply-files.md` |
 | 근거 고리: 주장 후보·원문 인용·한 번에 채택·본문 출처 (`quote.py`·`provenance.py`·`/resources/{rid}/adopt`) | `docs/design/evidence-loop.md` |
+| 항목 간 정합성 점검(같은 지표·다른 값, `consistency.py`) | `docs/design/consistency.md` |
 | 호환 서버(공통기반 모델)·AI 공급자를 더하기 (`compat_provider.py`·`aiconfig.PROVIDERS`) | `docs/design/compat-provider.md` |
 | **두 PC 작업 방식 · 행정망 PC 제약** | `docs/work-setup.md` |
 | 주민 설문(구성·정리·분석)·GIS 단계구분도 — **①~④ 만듦(v0.29), ⑤~⑧·GIS 는 방향만** | `docs/design/survey.md` |
@@ -262,6 +264,7 @@ data_requests, settings`.
 ### 한 곳에서만 만든다
 - 근거 번호(E-번호) → `services/numbering.py`.
 - 원문 인용 판정(`quote_state`) → `services/quote.py`. 저장하지 않고 읽을 때마다 본다(자료를 고치면 따라 바뀐다). 비슷함으로 넓히지 않는다.
+- 항목 간 정합성 → `services/consistency.py`. 단위는 근거 점검기의 `_QTY_UNIT` 을 같이 쓴다. 놓치는 쪽으로 좁힌다(지명·나이 기준을 지표 이름에서 떼지 않는다, 연도를 못 박으면 건너뛴다).
 - 문장별 출처 → `services/provenance.py`. 출처도 저장하지 않고 계산한다. `draft_versions` 는 `put_outline` 에서 지우지 않는다(되돌린 본문이 '사람이 씀'으로 둔갑한다).
 - 본문의 숫자·근거 번호 대조(근거 점검기) → `services/evidence_check.py`. 초고 화면·본문 저장·최종본 점검이 같은 `check_text()` 를 쓴다.
   대조 원문은 **자료 원문 + 근거의 주장·위치**다. AI 요약을 넣지 않는다(요약이 틀리면 틀린 숫자를 통과시킨다). 의견만, 고치지 않는다.
