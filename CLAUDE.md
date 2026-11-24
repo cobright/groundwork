@@ -126,6 +126,7 @@ backend/
                          templates.py 문서 유형별 목차 틀의 유일한 출처(app/doc_templates/*.json 을 읽고 검사) + family_of(계열 판정)
                          evidence.py  목차에 연결된 근거 모으기(linked_evidence) + 표시(evidence_mark)
                          evidence_check.py 근거 점검기(규칙): 본문 숫자·근거 번호·인용 ↔ 자료 원문 대조 — AI 를 부르지 않는다
+                         score_map.py 배점 대비 충실도 지도(규칙): 심사항목별 배점·분량·확정 근거 — 최종본 화면 맨 위
                          consistency.py 항목 간 정합성(규칙): 같은 지표가 목차마다 다른 값인 곳 — 최종본 점검에 나온다
                          quote.py     원문 인용이 자료 본문에 그대로 있는가(공백·표 구분자만 무시) — 판정하는 유일한 자리
                          provenance.py 본문 이력(draft_versions) + 문장별 출처(AI 그대로/사람이 고침/사람이 씀)
@@ -227,6 +228,7 @@ data_requests, settings`.
 | 부서 회신 파일·요청 대조·원본 보관 (`attachments.py`·`resource_analysis.py` 의 `ASKED_RULE`) | `docs/design/reply-files.md` |
 | 근거 고리: 주장 후보·원문 인용·한 번에 채택·본문 출처 (`quote.py`·`provenance.py`·`/resources/{rid}/adopt`) | `docs/design/evidence-loop.md` |
 | 항목 간 정합성 점검(같은 지표·다른 값, `consistency.py`) | `docs/design/consistency.md` |
+| 배점 대비 충실도 지도(`score_map.py`·`parse_score_note`) | `docs/design/score-map.md` |
 | 호환 서버(공통기반 모델)·AI 공급자를 더하기 (`compat_provider.py`·`aiconfig.PROVIDERS`) | `docs/design/compat-provider.md` |
 | **두 PC 작업 방식 · 행정망 PC 제약** | `docs/work-setup.md` |
 | 주민 설문(구성·정리·분석)·GIS 단계구분도 — **①~④ 만듦(v0.29), ⑤~⑧·GIS 는 방향만** | `docs/design/survey.md` |
@@ -306,6 +308,7 @@ data_requests, settings`.
 
 ### 가이드라인
 - 배점 ↔ 목차 짝짓기는 확신이 낮으면 낮다고 적고, `card.purpose` 는 덮어쓰지 않고 이어 붙인다(`score_note`).
+- 배점 집계는 그 문장을 `parse_score_note()` 로 되읽는다(컬럼 없음). `score_note()` 의 문구를 바꾸면 되읽기도 함께 — 같은 파일, 왕복 테스트가 지킨다.
 - 정정 공고 비교는 자동으로 고치지 않는다. 다시 읽지 않고 저장된 분석끼리 견준다.
 - 그 밖의 논점(규칙/LLM 역할 분담, 표지 후보군, 읽을 범위)은 `docs/design/guideline.md`.
 
@@ -368,7 +371,7 @@ data_requests, settings`.
 - 집필카드 안내는 공모사업 계획서·기획보고서에만 채웠다. 나머지 유형(용역 과업지시서·
   기관장 관심사업·정책검토·간부회의)은 아직 빈 카드다. **빈 카드를 억지로 채우지 말 것** —
   근거 없는 안내문은 없느니만 못하다. 실제로 그 유형을 써 보고 손이 멈추는 자리를 적는다.
-- 대시보드에서 심사 배점을 쓰고 싶어지면 그때 `writing_cards.score` 컬럼으로 올린다.
+- 대시보드에서 심사 배점을 쓰고 싶어지면 그때 `writing_cards.score` 컬럼으로 올린다(최종본의 배점 지도는 카드 문장을 되읽는다 — `docs/design/score-map.md`).
 
 **16. 주민 설문** — 2026-10-13 사용자와 방향을 정함. 핵심: **설계한 설문지가 곧 분석 틀** —
    계획서의 주장 → 근거 지도(통계로? 설문으로?) → 문항 → 분석 계획을 **수집 전에** 정하고, 구글폼·네이버폼

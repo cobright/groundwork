@@ -93,6 +93,7 @@ export const api = {
   ackEvidence: (id, eid) => req(`/projects/${id}/evidence/${eid}/acknowledge`, { method: "POST", body: "{}" }),
   // 최종본
   finalCheck: (id) => req(`/projects/${id}/final-check`),
+  scoreMap: (id) => req(`/projects/${id}/score-map`),
   preview: (id) => req(`/projects/${id}/preview`),
   exportDocxUrl: (id, includeEvidence) => `/api/projects/${id}/export.docx?include_evidence=${includeEvidence ? "true" : "false"}`,
   // 한글(HWPX) 양식 보관함 — 양식은 사용자가 올린 원본을 그대로 보관한다

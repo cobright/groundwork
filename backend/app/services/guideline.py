@@ -291,6 +291,24 @@ def score_note(hits: list[dict]) -> str:
     return out
 
 
+_NOTE = re.compile(r"\[심사배점\]\s*이 항목은\s*(.+?)에 대응합니다\.")
+_NOTE_PART = re.compile(r"‘([^’]+)’(?:\s*(\d+(?:\.\d+)?)\s*점)?")
+
+
+def parse_score_note(purpose: str) -> list[dict]:
+    """집필카드 purpose 에서 score_note() 가 박은 배점 문장을 되읽는다 → [{label, points(없으면 None), low}].
+
+    왜 컬럼이 아니라 문장을 되읽는가: 배점은 지금 이 문장 하나로만 남아 있고, 사람이 카드에서 보고 고치는 것도
+    이 문장이다. 따로 컬럼을 두면 화면의 문장과 집계가 어긋날 수 있다. 문장의 꼴을 정하는 score_note() 와
+    되읽는 이 함수를 한 파일에 둔다 — 한쪽만 고치면 테스트가 깨진다."""
+    out = []
+    for m in _NOTE.finditer(purpose or ""):
+        low = "확신이 낮" in (purpose[m.end():m.end() + 40])
+        for p in _NOTE_PART.finditer(m.group(1)):
+            out.append({"label": p.group(1).strip(), "points": float(p.group(2)) if p.group(2) else None, "low": low})
+    return out
+
+
 def to_tree(items: list[dict], refined: dict | None = None,
             scores: dict[int, list[dict]] | None = None) -> list[dict]:
     """평평한 항목 목록을 templates.py 와 **같은 모양**의 트리로 만든다.

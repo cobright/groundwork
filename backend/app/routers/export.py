@@ -34,6 +34,15 @@ def get_preview(pid: int):
     return {"name": proj["name"], "doc_type": proj["doc_type"], "sections": sections}
 
 
+@router.get("/{pid}/score-map")
+def get_score_map(pid: int):
+    """배점 대비 충실도 지도: 심사항목마다 배점·분량·확정 근거. 규칙으로 센 것이고 의견만 낸다."""
+    from ..services.score_map import build
+    with connect() as c:
+        _require(c, pid)
+        return build(c, pid)
+
+
 @router.get("/{pid}/export.docx")
 def export_docx(pid: int, include_evidence: bool = True):
     with connect() as c:

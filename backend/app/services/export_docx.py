@@ -288,6 +288,9 @@ def final_check(pid) -> dict:
         # 항목 간 정합성(규칙): 같은 지표가 목차마다 다른 값으로 나오는 곳
         from .consistency import check_sections
         mismatched_values = check_sections(sections)
+        # 배점 대비 충실도(규칙): 배점이 걸린 항목의 근거·분량
+        from .score_map import build as score_map
+        smap = score_map(c, pid)["items"]
         # 2026-11-24 실제 업무(#6)에서 드러난 세 가지 — 부록이 사실과 다르게 읽히는 자리
         nos = evidence_numbers(c, pid)
         evs = [dict(r) for r in c.execute("SELECT * FROM evidence WHERE project_id=? ORDER BY id", (pid,))]
@@ -360,6 +363,16 @@ def final_check(pid) -> dict:
         group = [f for f in ev_found if f["kind"] == kind]
         items.append({"level": group[0]["level"], "label": f"근거 점검: {kind}",
                       "detail": [f"{f['section']} — {f['text']}" for f in group]})
+    no_ev = [r for r in smap if "확정 근거 0건" in r["flags"]]
+    if no_ev:
+        items.append({"level": "중요", "label": "심사배점 항목에 확정 근거가 없음",
+                      "detail": [f"‘{r['label']}’" + (f" {r['points']:g}점" if r["points"] is not None else "")
+                                 + f" — {', '.join(r['nodes'])}" for r in no_ev]})
+    thin = [r for r in smap if any(f.startswith("분량 몫") for f in r["flags"])]
+    if thin:
+        items.append({"level": "참고", "label": "배점에 비해 분량이 얇은 항목",
+                      "detail": [f"‘{r['label']}’ — " + next(f for f in r["flags"] if f.startswith("분량 몫"))
+                                 for r in thin] + ["분량이 곧 점수는 아닙니다 — 배점이 큰 항목이 충분히 다뤄졌는지만 보세요"]})
     if mismatched_values:
         items.append({"level": "중요", "label": "같은 지표가 목차마다 다른 값으로 나옴",
                       "detail": [f["text"] for f in mismatched_values]

@@ -971,3 +971,12 @@ select.st-need{color:#9A6a1a}select.st-sent{color:#3E5F86}select.st-back{color:#
 .pv-ed{color:#8a6a00}.provline.pv-ed{border-left-color:#e6cf7a}
 .pv-hu{color:#1f6b3a}.provline.pv-hu{border-left-color:#9fd0b0}
 .provhist{margin:4px 0}.provhist summary{cursor:pointer;color:var(--muted)}
+
+/* 배점 대비 충실도 지도 */
+.smap{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:10px 12px;margin-bottom:12px;font-size:12px}
+.smap summary{cursor:pointer;font-weight:600;margin-bottom:6px}
+.smap table{width:100%;border-collapse:collapse;margin:6px 0}
+.smap th,.smap td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;color:var(--ink);opacity:1}
+.smap th{color:var(--muted);font-weight:600}
+.smap td.num{text-align:right;white-space:nowrap}
+.smap tr.flag td:last-child{color:var(--stamp)}

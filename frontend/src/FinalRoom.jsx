@@ -6,6 +6,7 @@ export default function FinalRoom({ pid }) {
   const cols = useColumns("final", { left: 300, right: 340 }, { left: "점검·내보내기" });
   const [preview, setPreview] = useState(null);
   const [check, setCheck] = useState(null);
+  const [smap, setSmap] = useState(null);       // 배점 대비 충실도 지도
   const [includeEvidence, setIncludeEvidence] = useState(true);
   const [err, setErr] = useState("");
   // 한글(HWPX) 양식
@@ -20,7 +21,10 @@ export default function FinalRoom({ pid }) {
   useEffect(() => { loadForms(); }, []);
   async function reload() {
     setErr("");
-    try { const [pv, fc] = await Promise.all([api.preview(pid), api.finalCheck(pid)]); setPreview(pv); setCheck(fc); }
+    try {
+      const [pv, fc, sm] = await Promise.all([api.preview(pid), api.finalCheck(pid), api.scoreMap(pid)]);
+      setPreview(pv); setCheck(fc); setSmap(sm);
+    }
     catch (e) { setErr(String(e.message || e)); }
   }
   async function loadForms() {
@@ -130,6 +134,7 @@ export default function FinalRoom({ pid }) {
       <section className="col center wide-preview">
         <div className="chead"><p className="eyebrow m0">최종본 미리보기</p>
           <button className="btn sm ghost" onClick={reload}>새로고침</button></div>
+        {smap?.items?.length > 0 && <ScoreMap m={smap} />}
         {!preview ? <div className="hint">불러오는 중…</div> : (
           <div className="docpreview">
             <h1 className="doctitle">{preview.name || "제목 없음"}</h1>
@@ -150,5 +155,36 @@ export default function FinalRoom({ pid }) {
         )}
       </section>
     </div>
+  );
+}
+
+
+// 배점 대비 충실도 지도 — 심사 배점·분량·확정 근거를 한 표에. 규칙으로 센 것이고 고치지 않는다(원칙 1).
+// 배점은 가이드라인 분석이 집필카드에 실어 둔 [심사배점] 문장에서 읽는다.
+function ScoreMap({ m }) {
+  const pct = (x) => (x == null ? "—" : `${Math.round(x * 100)}%`);
+  return (
+    <details className="smap" open>
+      <summary>배점 대비 충실도 · 심사항목 {m.items.length}개 · 배점 합 {m.total_points}점</summary>
+      <table>
+        <thead><tr><th>심사항목</th><th>배점</th><th>목차</th><th>분량(몫)</th><th>확정 근거</th><th>볼 것</th></tr></thead>
+        <tbody>
+          {m.items.map((r) => (
+            <tr key={r.label} className={r.flags.length ? "flag" : ""}>
+              <td>{r.label}{r.low && <span className="hint" title="짝짓기 확신이 낮습니다 — 공고 원문에서 확인하세요"> (?)</span>}</td>
+              <td className="num">{r.points == null ? "—" : `${r.points}점`}<div className="hint">{pct(r.point_share)}</div></td>
+              <td>{r.nodes.join(", ")}</td>
+              <td className="num">{r.chars.toLocaleString()}자<div className="hint">{pct(r.char_share)}</div></td>
+              <td className="num">{r.evidence}{r.evidence_linked > r.evidence && <div className="hint">미확정 {r.evidence_linked - r.evidence}</div>}</td>
+              <td>{r.flags.join(" · ")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {m.unscored.length > 0 && (
+        <div className="hint">배점이 걸리지 않은 장: {m.unscored.map((u) => `${u.node}(${u.chars.toLocaleString()}자)`).join(", ")}</div>
+      )}
+      <div className="hint">분량은 확정 본문의 글자 수(공백 제외)입니다. 분량이 곧 점수는 아닙니다 — 배점이 큰 항목이 충분히 다뤄졌는지만 보세요.</div>
+    </details>
   );
 }
