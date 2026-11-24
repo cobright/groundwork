@@ -9,12 +9,16 @@ from dotenv import load_dotenv
 from .db import backup_db, init_db
 
 # 실행 중인 코드의 버전. 화면의 오류 메시지에 실려, "껐다 켰는지"를 사람이 확인할 수 있게 한다.
-_VER_FILE = Path(__file__).resolve().parent.parent.parent / "VERSION.txt"
+# 포터블 꾸러미에서는 같은 파일이 '업데이트_내역.txt' 로 들어간다(_build_portable.ps1) — 둘 다 본다.
+# 예전엔 VERSION.txt 만 봐서, 정작 버전이 필요한 행정망 꾸러미에서 늘 '알 수 없음'이 떴다.
+_ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 def _read_version() -> str:
-    try:
-        return _VER_FILE.read_text(encoding="utf-8").strip().splitlines()[0].strip()
-    except Exception:
-        return "알 수 없음"
+    for name in ("VERSION.txt", "업데이트_내역.txt"):
+        try:
+            return (_ROOT_DIR / name).read_text(encoding="utf-8-sig").strip().splitlines()[0].strip()
+        except Exception:
+            continue
+    return "알 수 없음"
 
 
 APP_VERSION = _read_version()
