@@ -74,3 +74,31 @@ def test_지자체가_아닌_공고도_같은_규칙으로_읽는다(client, pro
     assert {p["label"] for p in a["scoring_match"]["pairs"]} == {"문제 인식", "실현 가능성", "성장 전략", "팀 구성"}
     assert [m["label"] for m in a["scoring_match"]["missing_in_outline"]] == ["자부담 확보"]
     assert "2027-03-19" in a["basic"]["마감일후보"]
+
+
+def test_서식_표_자료요구에_표_이름을_붙이고_서명란은_뺀다():
+    """실물 #7(2026-11-25): 서식 표의 머리글만 자료요청이 되어('읍·면 · 명칭 · 이용현황 · 소재지 · 비 고')
+    부서가 무엇을 채우라는지 알 수 없었고, 서명란('(군) 단체장 (직인)')까지 요청이 됐다.
+    블록 모양은 실물 공고를 본떴다(실제 기관 파일은 공개 저장소에 넣지 않는다)."""
+    from app.services.guideline import parse_outline
+
+    def p(i, t):
+        return {"i": i, "page": 0, "kind": "para", "text": t, "rows": None}
+
+    def tb(i, *rows):
+        return {"i": i, "page": 0, "kind": "table", "text": " ".join(" ".join(r) for r in rows), "rows": [list(r) for r in rows]}
+
+    blocks = [p(0, "Ⅰ. 사업 개요"), p(1, "1. 지역 여건"),
+              p(2, "◦ 재래시장, 전통 5일장 등 운영 현황"),
+              tb(3, ("읍·면", "명칭", "이용현황", "소재지", "비 고"), ("○○읍", "ㅇㅇ시장", "연 00명", "", "")),
+              p(4, "2. 지방비 확보"), p(5, "□ 지방비 확약내역"), p(6, "(단위 : 백만원)"),
+              tb(7, ("구분", "합계", "국비", "시도비", "군비", "비고"), ("확약내역", "", "", "", "", "")),
+              p(8, "○○부 장관 귀하"),
+              tb(9, ("붙임 7", "추가 보충 및 증빙자료")),
+              p(10, "2025. 00. 00."),
+              tb(11, ("(군) 단체장 (직인)", "(광역시도) 단체장 (직인)"))]
+    items = parse_outline(blocks)["items"]
+    needs = [n["text"] for it in items for n in it["needs"] if n["source"] == "표"]
+    assert needs == ["재래시장, 전통 5일장 등 운영 현황 — 표: 읍·면 · 명칭 · 이용현황 · 소재지 · 비 고",
+                     "지방비 확약내역 — 표: 구분 · 합계 · 국비 · 시도비 · 군비 · 비고",   # '(단위…)' 줄은 이름이 아니다
+                     "붙임 7 · 추가 보충 및 증빙자료"]                                     # 붙임 제목 띠는 앞 줄을 달지 않는다

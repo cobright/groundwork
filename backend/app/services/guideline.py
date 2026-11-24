@@ -103,6 +103,17 @@ def flat(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").replace("\n", " ")).strip()
 
 
+CAPTION_GAP = 3                                    # 표 이름으로 볼 글줄은 표에서 이만큼 블록 안
+RE_UNIT = re.compile(r"^\(?\s*단위\s*[:：]")
+RE_ATTACH = re.compile(r"^\s*붙임\s*\d")
+RE_SIGN = re.compile(r"직인|서명|\(인\)|날인")
+
+
+def _is_signature(head: list[str]) -> bool:
+    """서명란(‘(군) 단체장 (직인)’)은 자료 요구가 아니다 — 칸마다 직인·서명이 있는 표."""
+    return all(RE_SIGN.search(h) for h in head)
+
+
 def _is_noise(t: str) -> bool:
     return (bool(RE_NOISE.match(t)) or RE_EMPTY_BULLET.match(t) is not None
             or RE_TAG_ONLY.match(t) is not None)
@@ -195,19 +206,27 @@ def parse_outline(blocks: list[dict], start: int | None = None, end: int | None 
 
     items: list[dict] = []
     cur = None
+    caption = None                                 # 표 바로 앞의 글줄(표가 무엇의 표인지) — (글, 블록 번호)
     for ln in lines:
         t, blk, pg = ln["text"], ln["block"], ln["page"]
         if ln["rows"] is not None:                 # 진짜 표 = 채워 와야 할 자료 명세
             if cur is not None:
                 head = [c for c in ln["rows"][0] if c.strip()]
-                if len(head) >= 2:
-                    cur["needs"].append({"text": flat(" · ".join(dict.fromkeys(flat(h) for h in head)))[:200],
-                                         "source": "표", "block": blk, "page": pg})
+                if len(head) >= 2 and not _is_signature(head):
+                    spec = flat(" · ".join(dict.fromkeys(flat(h) for h in head)))
+                    # 머리글만으로는 부서가 무엇을 채우라는지 모른다(실물 #7, 2026-11-25:
+                    # '읍·면 · 명칭 · 이용현황 · 소재지 · 비 고'). 바로 앞 글줄이 표의 이름이다.
+                    # 단, '붙임 6 · 지방비 확보 확약서' 같은 붙임 제목 띠는 스스로 이름이다 — 앞 글줄은 남의 것이다.
+                    if caption and blk - caption[1] <= CAPTION_GAP and not RE_ATTACH.match(head[0]):
+                        spec = f"{caption[0]} — 표: {spec}"
+                    cur["needs"].append({"text": spec[:200], "source": "표", "block": blk, "page": pg})
+            caption = None
             continue
         if _is_noise(t):
             continue
         hit = match_marker(t)
         if hit:
+            caption = None
             name, rank, title = hit
             cur = {"title": title, "level": depth_of.get(rank, 1),
                    "block": blk, "page": pg, "marker": name,
@@ -216,6 +235,8 @@ def parse_outline(blocks: list[dict], start: int | None = None, end: int | None 
             continue
         if cur is None:
             continue
+        if not RE_UNIT.match(t):                   # '(단위 : 백만원)' 은 표의 이름이 아니다
+            caption = (RE_LEAD_BULLET.sub("", t).lstrip("□■◦○●▪-·※ ").strip()[:80], blk)
         note = RE_NOTE.match(t)
         if note:
             cur["needs"].append({"text": note.group(1).strip()[:300],
