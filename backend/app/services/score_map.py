@@ -46,7 +46,7 @@ def build(c, pid: int) -> dict:
         return out
 
     covered: set[str] = set()
-    rows: dict[str, dict] = {}
+    rows: dict[tuple, dict] = {}
     for s in secs:
         hits = scored.get(s["uid"])
         if not hits:
@@ -54,10 +54,10 @@ def build(c, pid: int) -> dict:
         members = group(s["uid"])
         covered |= {m["uid"] for m in members}
         for h in hits:
-            r = rows.setdefault(h["label"], {"label": h["label"], "points": h["points"], "low": False,
-                                             "nodes": [], "_uids": []})
-            if r["points"] is None and h["points"] is not None:
-                r["points"] = h["points"]
+            # 이름과 배점이 함께 같아야 같은 심사항목이다. 실물 #7(2026-11-25)에서 '실현 가능성' 20점과 25점이
+            # 서로 다른 목차에 걸려 있었는데, 이름으로만 묶어 한 줄(20점)이 되고 배점 합이 25점 모자랐다.
+            r = rows.setdefault((h["label"], h["points"]), {"label": h["label"], "points": h["points"], "low": False,
+                                                           "nodes": [], "_uids": []})
             r["low"] = r["low"] or h["low"]
             r["nodes"].append(f"{s['number']} {s['title']}")
             r["_uids"] += [m["uid"] for m in members if m["uid"] not in r["_uids"]]

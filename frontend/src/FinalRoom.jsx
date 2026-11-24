@@ -170,7 +170,7 @@ function ScoreMap({ m }) {
         <thead><tr><th>심사항목</th><th>배점</th><th>목차</th><th>분량(몫)</th><th>확정 근거</th><th>볼 것</th></tr></thead>
         <tbody>
           {m.items.map((r) => (
-            <tr key={r.label} className={r.flags.length ? "flag" : ""}>
+            <tr key={`${r.label}|${r.points}`} className={r.flags.length ? "flag" : ""}>
               <td>{r.label}{r.low && <span className="hint" title="짝짓기 확신이 낮습니다 — 공고 원문에서 확인하세요"> (?)</span>}</td>
               <td className="num">{r.points == null ? "—" : `${r.points}점`}<div className="hint">{pct(r.point_share)}</div></td>
               <td>{r.nodes.join(", ")}</td>

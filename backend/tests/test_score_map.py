@@ -86,3 +86,23 @@ def test_배점이_없으면_표가_비고_점검도_조용하다(client, projec
     assert m["items"] == [] and m["unscored"] == [{"node": "1 현황", "chars": 0}]
     labels = [i["label"] for i in client.get(f"/api/projects/{project}/final-check").json()["items"]]
     assert "심사배점 항목에 확정 근거가 없음" not in labels
+
+
+def test_실물_공고의_배점_꼴을_읽는다():
+    """실물 #7(2026-11-25): '최대 5'를 점수로 못 읽었고, 같은 이름·다른 배점의 두 심사항목이 한 줄로 합쳐졌다."""
+    got = parse_score_note("[심사배점] 이 항목은 ‘실현 가능성’ 25점, ‘지역 재원 창출’ 20점, ‘적극성’ 최대 5에 대응합니다.")
+    assert [(x["label"], x["points"]) for x in got] == [("실현 가능성", 25.0), ("지역 재원 창출", 20.0), ("적극성", 5.0)]
+    assert parse_score_note("[심사배점] 이 항목은 ‘적격성’ 미충족 탈락에 대응합니다.")[0]["points"] is None
+
+
+def test_이름이_같아도_배점이_다르면_다른_심사항목이다(client, project):
+    client.put(f"/api/projects/{project}/outline", json={"nodes": [
+        {"uid": "a", "sort": 0, "title": "세부 추진 계획"}, {"uid": "b", "sort": 1, "title": "재원 확보 계획"}]})
+    client.put(f"/api/projects/{project}/cards/a",
+               json={"purpose": "[심사배점] 이 항목은 ‘실현 가능성’ 20점에 대응합니다."})
+    client.put(f"/api/projects/{project}/cards/b",
+               json={"purpose": "[심사배점] 이 항목은 ‘실현 가능성’ 25점, ‘적극성’ 최대 5에 대응합니다."})
+    m = client.get(f"/api/projects/{project}/score-map").json()
+    assert m["total_points"] == 50
+    assert [(r["label"], r["points"], r["nodes"]) for r in m["items"]] == [
+        ("실현 가능성", 25, ["2 재원 확보 계획"]), ("실현 가능성", 20, ["1 세부 추진 계획"]), ("적극성", 5, ["2 재원 확보 계획"])]

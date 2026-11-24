@@ -292,7 +292,9 @@ def score_note(hits: list[dict]) -> str:
 
 
 _NOTE = re.compile(r"\[심사배점\]\s*이 항목은\s*(.+?)에 대응합니다\.")
-_NOTE_PART = re.compile(r"‘([^’]+)’(?:\s*(\d+(?:\.\d+)?)\s*점)?")
+# 배점 칸은 공고마다 적는 꼴이 다르다: '20점'·'20'(score_note 가 '점'을 붙인다)·'최대 5'(실물 #7, 2026-11-25).
+# '미충족 탈락' 같은 숫자 없는 기준은 점수 없음(None)으로 둔다.
+_NOTE_PART = re.compile(r"‘([^’]+)’(?:\s*(?:최대\s*)?(\d+(?:\.\d+)?)\s*(?:점)?)?")
 
 
 def parse_score_note(purpose: str) -> list[dict]:
