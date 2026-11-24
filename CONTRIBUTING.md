@@ -52,7 +52,7 @@ python -m pytest
 
 - **XML 은 `defusedxml` 로 읽습니다.** 표준 `xml.etree` 를 import 하지 않습니다.
 - **DB 를 바꾸면** `backend/app/db.py` 의 `_migrate()` 로 옛 DB 를 올리고, 기존 데이터가 남는지 테스트로 보입니다.
-- **한 곳에서만 만드는 것**이 있습니다: 근거 번호(`services/numbering.py`), 목차 틀(`services/templates.py`),
+- **한 곳에서만 만드는 것**이 있습니다: 근거 번호(`services/numbering.py`), 목차 틀(`app/doc_templates/` 파일 → `services/templates.py` 가 읽음),
   문서 형식 분기(`services/doc_read.py` 의 `read_document()`), AI 일 배정(`services/aiconfig.py` 의 `TASKS`).
   같은 일을 다른 곳에서 새로 만들지 말고 그 자리를 고쳐 주세요.
 - **파괴적인 동작**(목차 갈아끼우기·삭제)에는 미리보기와, 사라지는 것을 전부 세어 말하는 확인 문구가 함께 갑니다.
@@ -65,8 +65,11 @@ python -m pytest
 - **문서를 읽지 못하는 실물 파일** — hwp·hwpx·xls 는 기관마다 모양이 다릅니다. 못 읽는 파일이 있으면
   이슈로 알려 주세요. 단 **실제 업무 자료나 개인정보가 든 파일은 올리지 마세요.** 같은 모양을 재현한
   가짜 파일이면 충분합니다.
-- **문서 유형(목차 틀)** — `services/templates.py`. 실제로 그 문서를 써 본 경험에서 나온 틀을 환영합니다.
+- **문서 유형(목차 틀)** — [`backend/app/doc_templates/`](./backend/app/doc_templates)에 JSON 파일 하나를 더하면 됩니다.
+  코드를 고칠 필요가 없고, 칸 이름은 화면의 집필카드 이름(작성 목적·핵심 질문 등) 그대로입니다.
+  쓰는 법은 그 폴더의 `README.md`. 실제로 그 문서를 써 본 경험에서 나온 틀을 환영합니다.
   짐작으로 채운 안내문은 없느니만 못하니, 근거가 되는 실무 경험을 PR 설명에 적어 주세요.
+- **메뉴 이름** — 대상에 맞게 바꿔 쓰려면 `frontend/src/labels.js` 한 곳만 고치면 됩니다.
 - **맥·리눅스에서 돌려 본 결과** — 개발은 주로 윈도우에서 합니다.
 
 ## PR 을 보낼 때

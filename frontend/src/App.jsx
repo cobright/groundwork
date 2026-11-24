@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api, STATUSES } from "./api.js";
+import { HOME_VIEWS, WORK_VIEWS, LABELS } from "./labels.js";
 import * as M from "./outlineModel.js";
 import ResourceRoom from "./ResourceRoom.jsx";
 import DraftRoom from "./DraftRoom.jsx";
@@ -306,7 +307,7 @@ export default function App() {
           윗줄 = 지금 다루는 '업무'가 무엇인가 / 아랫줄 = 어느 '화면'으로 가는가 */}
       <header>
         <div className="hrow work">
-          <div className="brand"><span className="logo">기</span><b>행정기획</b> 워크벤치</div>
+          <div className="brand"><span className="logo">{LABELS.brandMark}</span><b>{LABELS.brandBold}</b> {LABELS.brandRest}</div>
           <div className="projbar">
             <select value={pid || ""} onChange={(e) => loadProject(+e.target.value)}>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name || "(무제)"}</option>)}
@@ -329,28 +330,24 @@ export default function App() {
             }} />
             <span className={"flag" + (flag === "저장됨" ? "" : " on")}>{flag}</span>
           </div>
-          <button className="btn" onClick={newProject}>+ 새 업무</button>
-          {pid && <button className="btn report-btn" onClick={() => setReportOpen(true)} title="현재 업무의 진행상황을 파일로 내보냅니다">진행상황 보고</button>}
+          <button className="btn" onClick={newProject}>{LABELS.newProject}</button>
+          {pid && <button className="btn report-btn" onClick={() => setReportOpen(true)} title="현재 업무의 진행상황을 파일로 내보냅니다">{LABELS.report}</button>}
         </div>
 
         <div className="hrow nav">
-          <button className={"btn dashbtn" + (view === "dashboard" ? " on" : "")} onClick={() => setView("dashboard")}>대시보드</button>
-          <button className={"btn dashbtn" + (view === "inbox" ? " on" : "")} onClick={() => setView("inbox")}>받은 보고</button>
+          {HOME_VIEWS.map(([v, label]) => (
+            <button key={v} className={"btn dashbtn" + (view === v ? " on" : "")} onClick={() => setView(v)}>{label}</button>
+          ))}
           <span className="hsep" aria-hidden="true"></span>
-          <nav className={"tabs" + (view === "dashboard" || view === "inbox" ? " away" : "")}>
-            <button className={"tab" + (view === "outline" ? " on" : "")} onClick={() => setView("outline")}>목차 편집</button>
-            <button className={"tab" + (view === "resources" ? " on" : "")} onClick={() => setView("resources")}>자료·근거</button>
-            <button className={"tab" + (view === "library" ? " on" : "")} onClick={() => setView("library")}>공통자료실</button>
-            <button className={"tab" + (view === "draft" ? " on" : "")} onClick={() => setView("draft")}>초고 작성</button>
-            <button className={"tab" + (view === "review" ? " on" : "")} onClick={() => setView("review")}>검토</button>
-            <button className={"tab" + (view === "requests" ? " on" : "")} onClick={() => setView("requests")}>자료요청</button>
-            <button className={"tab" + (view === "survey" ? " on" : "")} onClick={() => setView("survey")}>설문</button>
-            <button className={"tab" + (view === "final" ? " on" : "")} onClick={() => setView("final")}>최종본</button>
+          <nav className={"tabs" + (HOME_VIEWS.some(([v]) => v === view) ? " away" : "")}>
+            {WORK_VIEWS.map(([v, label]) => (
+              <button key={v} className={"tab" + (view === v ? " on" : "")} onClick={() => setView(v)}>{label}</button>
+            ))}
           </nav>
           <button className="help setbtn" onClick={() => setSetOpen(true)}
-                  title="내 정보 · AI 연결 · 자동 백업">설정</button>
+                  title="내 정보 · AI 연결 · 자동 백업">{LABELS.settings}</button>
           <a className="help" href="/사용설명서.html" target="_blank" rel="noopener"
-             title="사용설명서를 새 창에서 엽니다">사용설명서</a>
+             title="사용설명서를 새 창에서 엽니다">{LABELS.manual}</a>
         </div>
       </header>
 

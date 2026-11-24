@@ -51,7 +51,7 @@
    실재하는 것에서 UI 은유를 가져온다. 화려함보다 "통제되고 있다는 느낌".
 
 > 참고(미래): 용역업체(컨설팅사)용 화이트라벨은 용어 사전 + 사용자 유형 설정으로
-> 하기로 했으나 **보류**. 메뉴 라벨은 가능하면 한곳에 모아둔다.
+> 하기로 했으나 **보류**. 메뉴 라벨은 `frontend/src/labels.js` 한곳에 모았다(2026-11-24).
 
 ---
 
@@ -119,7 +119,7 @@ backend/
     skills/              반복작업 표준절차: resource_analysis, draft_writing,
                          statement, guideline_analysis(후보 판정·문구 다듬기)
     services/            export_docx.py (.docx 조립: 맑은 고딕 + 근거 부록)
-                         templates.py 문서 유형별 목차 틀의 유일한 출처 + family_of(계열 판정)
+                         templates.py 문서 유형별 목차 틀의 유일한 출처(app/doc_templates/*.json 을 읽고 검사) + family_of(계열 판정)
                          evidence.py  목차에 연결된 근거 모으기(linked_evidence) + 표시(evidence_mark)
                          numbering.py 근거 번호(E-번호)를 만드는 유일한 자리
                          hwpx_fill.py 한글 보고서 양식 채우기 · hwpx_form.py 서식형 양식 분석·자동 배정
@@ -136,6 +136,7 @@ frontend/src/
   App.jsx                헤더(지휘 바)+탭 라우팅. 뷰: dashboard/inbox/outline/
                          resources/library/draft/review/requests/final
   api.js                 모든 API 호출 헬퍼(+ reportApi). 오류 detail 안전 포맷.
+  labels.js              헤더 메뉴 라벨 한곳(HOME_VIEWS·WORK_VIEWS·LABELS). 키는 그대로, 글자만 바꾼다
   outlineModel.js        목차 트리/카드 로직(번호는 렌더 시 계산)
   Dashboard.jsx          초기화면. 업무 카드(결재란 단계 띠 + 미해결 칩 + 마감).
   ResourceRoom / LibraryRoom / DraftRoom / ReviewRoom / RequestRoom /
@@ -245,7 +246,8 @@ data_requests, settings`.
 ### 한 곳에서만 만든다
 - 근거 번호(E-번호) → `services/numbering.py`.
 - 목차에 연결된 근거 모으기 → `services/evidence.py` 의 `linked_evidence()`. 근거의 성격을 새로 만들면 `evidence_mark()` 와 함께 본다.
-- 목차 틀 → `services/templates.py`. 프런트는 `GET /api/templates` 로 받고 `buildFromTemplate` 하나만 쓴다.
+- 목차 틀 → 내용은 `app/doc_templates/*.json`(유형 하나에 파일 하나, 칸 이름은 화면의 집필카드 이름), 읽고 검사하는 것은 `services/templates.py`.
+  프런트는 `GET /api/templates` 로 받고 `buildFromTemplate` 하나만 쓴다. 틀을 코드(파이썬 dict)로 되돌리지 않는다 — 기여자가 파일 하나로 유형을 보태는 길이다.
 - 목차를 통째로 갈아끼우는 확인 문구 → `App.jsx` 의 `confirmReplace(what)`. **새로 목차를 심는 경로는 반드시 이것을 거친다.**
 - 문서 형식 분기 → `services/doc_read.py` 의 `read_document()`. 파일 입구(업무 자료·회신·공통자료)는 모두 `services/attachments.py` 를 부른다.
 - 양식 보관함 검사·저장 → `services/formstore.py`. 가이드라인에서 넘겨도 가이드라인 쪽 원본은 지우지 않는다.
@@ -343,7 +345,7 @@ data_requests, settings`.
 14. 책 쓰기 플랫폼: **2026-09-11 기획 논의 시작, 2026-09-12 별도 저장소 `D:\Desktop\mybooks` 로 분리**(기획 문서는 그쪽 `docs/plan.md`). 일반 저자 대상, 집필 도구 + 출판사·편집자·독자
     연결 서비스로 **워크벤치와 별개 제품**으로 기획 중이다(예전 메모의 '`doc_type` 하나 더하기'는 대상·배포가 정해지며 폐기).
     원칙 2 는 무의미해지지 않고 모양이 바뀐다 — 논픽션은 출처, 에세이는 저자 진술, 소설은 설정.
-15. 화이트라벨(용역업체용 용어/사용자 유형) — 보류. 메뉴 라벨을 한곳에 모아두는 것만 미리.
+15. 화이트라벨(용역업체용 용어/사용자 유형) — 보류. 준비만 해 두었다: 메뉴 라벨은 `frontend/src/labels.js`, 문서 유형은 `app/doc_templates/` 파일.
 
 ### 하지 않기로 한 것 (다시 떠오르면 여기를 볼 것)
 
