@@ -7,6 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .db import backup_db, init_db
+from .security import LocalOnlyMiddleware
 
 # 실행 중인 코드의 버전. 화면의 오류 메시지에 실려, "껐다 켰는지"를 사람이 확인할 수 있게 한다.
 # 포터블 꾸러미에서는 같은 파일이 '업데이트_내역.txt' 로 들어간다(_build_portable.ps1) — 둘 다 본다.
@@ -44,6 +45,9 @@ app.add_middleware(
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_methods=["*"], allow_headers=["*"],
 )
+# 다른 웹사이트발 쓰기 요청·남의 주소(Host)로 들어온 요청을 거절한다(security.py).
+# 나중에 더한 미들웨어가 바깥에 선다 — CORS 보다 먼저 거른다.
+app.add_middleware(LocalOnlyMiddleware)
 
 app.include_router(projects.router)
 app.include_router(outline.router)

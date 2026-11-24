@@ -50,6 +50,8 @@ python -m pytest
 
 ## 자주 걸리는 규칙 (전체 목록은 `CLAUDE.md` 6장)
 
+- **로컬 서버도 지킵니다.** 모든 요청은 `app/security.py` 를 지납니다(다른 사이트발 쓰기·남의 주소 거절).
+  새 API 를 만들어도 따로 할 일은 없지만, 이 검사를 우회하는 길(예: 0.0.0.0 으로 띄우기)을 만들지 마세요.
 - **XML 은 `defusedxml` 로 읽습니다.** 표준 `xml.etree` 를 import 하지 않습니다.
 - **DB 를 바꾸면** `backend/app/db.py` 의 `_migrate()` 로 옛 DB 를 올리고, 기존 데이터가 남는지 테스트로 보입니다.
 - **한 곳에서만 만드는 것**이 있습니다: 근거 번호(`services/numbering.py`), 목차 틀(`app/doc_templates/` 파일 → `services/templates.py` 가 읽음),

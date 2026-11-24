@@ -34,7 +34,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "workbench.db")
     monkeypatch.setattr(db, "BACKUP_DIR", tmp_path / "backups")
     db.init_db()
-    return TestClient(main.app)
+    # 실제 쓰임과 같은 주소로 — 앱은 이 PC 주소(127.0.0.1·localhost)가 아닌 Host 를 거절한다(security.py)
+    return TestClient(main.app, base_url="http://127.0.0.1:8000")
 
 
 @pytest.fixture

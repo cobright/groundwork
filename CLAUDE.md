@@ -92,6 +92,7 @@ backend/
   app/
     main.py              FastAPI 진입점. .env를 backend 기준으로 로드.
                          라우터 등록. frontend/dist 있으면 "/"로 정적 서빙.
+    security.py          LocalOnlyMiddleware: 다른 사이트발 쓰기(CSRF)·남의 Host(DNS 리바인딩) 거절
     db.py                SQLite 연결 + 스키마 + _migrate(). 경로는 __file__ 기준.
     routers/
       projects.py        업무 CRUD(부분수정). 마감일 due_date.
@@ -243,6 +244,12 @@ data_requests, settings`.
 - `.hwp` 관련은 `services/doc_read.py` 를 고친다. `_hwp_read_prototype.py` 는 import 되지 않는 참고본이다. 제어문자 폭(탭=9)은 줄이지 말 것.
 - XML 은 **반드시 `defusedxml`** 로 파싱한다(표준 `xml.etree` 를 import 하지 않는다 — 공공GitLab 보안 스캔이 막는다). 읽기만 안전해지므로 쓰는 쪽은 `_subelement()`·`ET.parse()` 로 둔다. hwpx 접두사(`hp:`)는 유지하지 않아도 한글이 읽는다(실물 확인).
 - `requirements.txt` 의 **하한**은 실제로 돌려 본 버전으로 적고, 간접 의존성도 적는다 — 취약점 검사는 하한을 검사한다.
+
+### 보안(로컬 서버)
+- 모든 요청은 `app/security.py` 의 `LocalOnlyMiddleware` 를 지난다: Host 가 127.0.0.1·localhost 가 아니면 400(DNS 리바인딩),
+  쓰기 요청의 `Origin`/`Sec-Fetch-Site` 가 다른 사이트면 403(CSRF). 원시 바이트를 받는 업로드 API 가 `text/plain` 으로 뚫렸던 것을 막았다.
+  Origin 이 없는 요청(브라우저 밖)은 받는다. 다른 PC 에서 접속하게 만들고 싶어지면 여기부터 다시 설계한다.
+- 테스트·스크립트의 TestClient 는 `base_url="http://127.0.0.1:8000"` 으로 만든다(기본값 `testserver` 는 400).
 
 ### 한 곳에서만 만든다
 - 근거 번호(E-번호) → `services/numbering.py`.

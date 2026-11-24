@@ -112,6 +112,9 @@ v0.30 (2026-11-24) 용어를 중립어로(사용자 결정: 용어 사전 대신
      저장소 cobright/bsh → cobright/groundwork. 로고 글자 기→G, 포터블 폴더 그라운드워크_포터블, 모의데이터 안의 문장까지.
      **바꾸지 않은 것**: 보고 파일 표식 `workbench-progress-report`, DB 파일 `workbench.db`, localStorage `wb.cols.*` —
      바꾸면 이전 판과 보고를 못 주고받고, 기존 설치가 자료를 못 찾고, 칸 폭 기억이 사라진다.
+  보안: 기능 분석 중 다른 출처에서 text/plain 으로 보낸 업로드가 201 로 들어가는 것을 확인(CSRF — 업무에 가짜 자료를 심을 수 있었다).
+     `app/security.py` 의 `LocalOnlyMiddleware` — 쓰기 요청은 Origin·Sec-Fetch-Site 로, 모든 요청은 Host 로 거른다(DNS 리바인딩).
+     테스트 15개(미들웨어를 빼면 공격 8개가 실패하는 것을 확인) + 실제 Chrome 에서 127.0.0.2 출처 페이지의 업로드·읽기가 막히는 것을 확인.
 
 ## 끝난 할 일
 
