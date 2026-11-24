@@ -89,6 +89,8 @@ backend/
   .env.example           LLM_PROVIDER + 각 provider 키/모델
   requirements-dev.txt   개발·테스트 전용(pytest). 꾸러미·1_SETUP 에는 넣지 않는다
   tests/                 pytest. conftest.py 가 임시 DB·가짜 AI(fake_ai)·모의데이터(mock_file)를 준다
+                         hwpx_sample.py 시험용 가상 보고서 양식(실제 기관 양식은 공개 저장소에 넣지 않는다)
+  evals/ai_eval.py       AI 품질 시험 묶음: 모의데이터로 실제 AI 를 돌려 **규칙으로** 채점(C1~C6). 요금이 든다 — 손으로 돌린다
   app/
     main.py              FastAPI 진입점. .env를 backend 기준으로 로드.
                          라우터 등록. frontend/dist 있으면 "/"로 정적 서빙.
@@ -327,6 +329,8 @@ data_requests, settings`.
 
 ### 코드 습관·테스트
 - 라우트 데코레이터는 **엔드포인트 함수에만** 붙인다(공용 함수 위에 붙어 422 → "[object Object]" 사고).
+- AI 지시문·모델 배정(`aiconfig.TASKS`)을 바꾸면 `python -m evals.ai_eval` 로 전후를 견준다. 채점은 AI 가 아니라 근거 점검기·정규식이다.
+  채점 규칙을 고치면 `tests/test_ai_eval.py`(잘하는 가짜 AI 는 전부 통과, 환각하는 가짜 AI 는 전부 실패)가 함께 맞아야 한다.
 - 테스트의 TestClient 는 컨텍스트매니저로 쓰지 않아 lifespan 이 안 돈다 → `init_db()` 를 명시 호출. LLM 은 fake provider 로 주입.
 - 설정(`ai.*`)을 건드리는 테스트는 **임시 DB** 로 돌린다 — `app.db` import 뒤 `db.DB_PATH`·`db.BACKUP_DIR` 를 갈아끼운다. 실DB로 돌리면 중간에 멈출 때 시험값이 남고, 다음 실행이 그것을 '원래 값'으로 기억해 오염이 굳는다.
 - 환경변수를 치우는 것은 `app.main` import **뒤에** 한다(`.env` 가 그때 로드되어 되살아난다 → 실제 API 를 호출해 버린다).

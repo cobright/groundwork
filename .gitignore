@@ -6,6 +6,8 @@ backend/.env
 
 # 데이터(로컬 DB) — 저장소에 넣지 않음
 backend/data/
+# AI 품질 시험 결과(모델 출력이 담긴다)
+backend/evals/results/
 
 # Node / 빌드 산출물
 frontend/node_modules/
