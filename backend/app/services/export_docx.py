@@ -272,6 +272,9 @@ def final_check(pid) -> dict:
         stmt = c.execute(
             "SELECT COUNT(*) n FROM evidence e JOIN resources r ON e.resource_id=r.id "
             "WHERE e.project_id=? AND r.kind=?", (pid, STATEMENT_KIND)).fetchone()["n"]
+        # 근거 점검기(규칙): 본문의 숫자·근거 번호를 근거 원문과 대조한 의견
+        from .evidence_check import check_project
+        ev_found = check_project(c, pid)
 
     empty = [f"{s['number']} {s['title']}" for s in sections if not (s["body"] or "").strip()]
     flagged = [f"{s['number']} {s['title']}" for s in sections
@@ -295,6 +298,11 @@ def final_check(pid) -> dict:
                       "detail": [f"[{o['kind']}] {o['problem'][:40]}" for o in dropped_no_reason]})
     if changed:
         items.append({"level": "중요", "label": "근거 자료가 변경된 근거 항목", "detail": [f"{changed}건 — 근거표에서 확인 필요"]})
+    # 근거 점검기 — 종류별로 묶어 보인다. 막지는 않지만(사람이 판단) '중대·중요'는 준비 안 됨으로 센다.
+    for kind in dict.fromkeys(f["kind"] for f in ev_found):
+        group = [f for f in ev_found if f["kind"] == kind]
+        items.append({"level": group[0]["level"], "label": f"근거 점검: {kind}",
+                      "detail": [f"{f['section']} — {f['text']}" for f in group]})
     if stmt:
         # 막지 않는다. 다만 보이게 한다 — 문서로 확인됐는지 판단하는 것은 사람의 몫이다.
         items.append({"level": "참고", "label": "담당자 진술로만 뒷받침되는 근거",

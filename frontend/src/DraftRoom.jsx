@@ -35,7 +35,11 @@ export default function DraftRoom({ pid }) {
   }
   async function generate() {
     if (!uid) return; setBusy(true); setErr("");
-    try { const r = await api.generateDraft(pid, uid, strictness, provider); setCtx((c) => ({ ...c, draft: { ...c.draft, ai_suggestion: r.ai_suggestion, strictness: r.strictness, model: r.model } })); }
+    try {
+      const r = await api.generateDraft(pid, uid, strictness, provider);
+      setCtx((c) => ({ ...c, draft: { ...c.draft, ai_suggestion: r.ai_suggestion, strictness: r.strictness, model: r.model },
+                       check: { ...(c.check || {}), suggestion: r.check || [] }, excluded: r.excluded || [] }));
+    }
     catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   }
@@ -52,7 +56,7 @@ export default function DraftRoom({ pid }) {
   function saveBodySoon(v) {
     setFlag("저장 중…"); clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
-      try { await api.saveDraftBody(pid, uid, v); setFlag("저장됨"); } catch (e) { setFlag("저장 실패"); setErr(String(e.message || e)); }
+      try { const r = await api.saveDraftBody(pid, uid, v); setFlag("저장됨"); setCtx((c) => c && ({ ...c, check: { ...(c.check || {}), body: r.check || [] } })); } catch (e) { setFlag("저장 실패"); setErr(String(e.message || e)); }
     }, 500);
   }
 
@@ -99,12 +103,18 @@ export default function DraftRoom({ pid }) {
                 <div className="sughead"><span>AI 제안 <em>({ctx.draft.strictness}{ctx.draft.model ? " · " + ctx.draft.model : ""})</em></span>
                   <span className="sugbtns"><button className="btn sm" onClick={applySuggestion}>본문에 반영</button><button className="btn sm ghost" onClick={appendSuggestion}>이어붙이기</button></span></div>
                 <div className="sugtext">{ctx.draft.ai_suggestion}</div>
+                {ctx.excluded?.length > 0 && (
+                  <div className="sugnote">확정하지 않은 근거 {ctx.excluded.length}건({ctx.excluded.map((x) => x.ev_no).filter(Boolean).join(", ")})은
+                    초고에 넘기지 않았습니다. 쓰려면 ‘자료·근거’에서 먼저 확정하세요.</div>
+                )}
+                <CheckList items={ctx.check?.suggestion} what="AI 제안" />
                 <div className="sugnote">AI 제안은 자동으로 본문에 들어가지 않습니다. 검토 후 반영하세요.</div>
               </div>
             )}
 
             <p className="eyebrow" style={{ marginTop: 18 }}>본문 (사용자 확정)</p>
             <textarea className="bodyedit" value={body} onChange={(e) => onBody(e.target.value)} placeholder="이 목차의 본문입니다. AI 제안을 반영하거나 직접 작성하세요." />
+            {body.trim() && <CheckList items={ctx.check?.body} what="본문" />}
           </>
         )}
       </section>
@@ -125,6 +135,24 @@ export default function DraftRoom({ pid }) {
           </div>
         ))}
       </section>
+    </div>
+  );
+}
+
+
+// 근거 점검기(규칙)의 의견. 본문을 고치지 않고 보여 주기만 한다(원칙 1).
+function CheckList({ items, what }) {
+  if (!items) return null;
+  if (items.length === 0) return <div className="ckbox ok">근거 점검 · {what}: 숫자와 근거 번호가 근거 원문과 맞습니다.</div>;
+  return (
+    <div className="ckbox">
+      <div className="ckhead">근거 점검 · {what} — 의견 {items.length}건 <span className="hint">(규칙으로 대조한 것 · 확인만 하세요)</span></div>
+      {items.map((f, i) => (
+        <div key={i} className={"ckitem lv-" + f.level}>
+          <span className="cklv">{f.level}</span><b>{f.kind}</b> {f.text}
+          <div className="cksent">“{f.sentence}”</div>
+        </div>
+      ))}
     </div>
   );
 }

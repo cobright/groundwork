@@ -239,6 +239,14 @@ body.col-dragging,body.col-dragging *{cursor:col-resize !important;user-select:n
 .sugbtns{display:flex;gap:6px}
 .sugtext{background:#fff;border:1px solid var(--line-soft);border-radius:4px;padding:10px 12px;white-space:pre-wrap;font-size:13px;line-height:1.6;max-height:240px;overflow:auto}
 .sugnote{font-size:11px;color:var(--muted);margin-top:6px}
+/* 근거 점검기(규칙) 의견 */
+.ckbox{margin-top:10px;border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px;font-size:12px;background:var(--field)}
+.ckbox.ok{color:var(--muted)}
+.ckhead{font-weight:600;margin-bottom:6px}
+.ckitem{padding:6px 0;border-top:1px solid var(--line-soft);line-height:1.5}
+.cklv{display:inline-block;font-size:10.5px;padding:0 6px;margin-right:6px;border-radius:9px;background:var(--amber-soft);color:var(--amber)}
+.ckitem.lv-중대 .cklv{background:var(--stamp-soft);color:var(--stamp)}
+.cksent{color:var(--muted);font-size:11px;margin-top:2px}
 .bodyedit{width:100%;min-height:220px;border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;font-size:14px;line-height:1.7;resize:vertical;background:#fff}
 .evsummary{border:1px solid var(--line-soft);border-radius:var(--radius);background:#fff;padding:10px 12px;font-size:13px;margin-bottom:12px}
 .evsummary b{color:var(--accent)}

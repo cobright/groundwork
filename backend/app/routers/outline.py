@@ -5,6 +5,7 @@ from ..db import connect, now
 from ..skills.draft_writing import write_draft
 from ..services.numbering import title_and_number
 from ..services.evidence import linked_evidence
+from ..services.evidence_check import check_text, evidence_index
 from ..services import snapshot
 from ..services.templates import family_of
 
@@ -136,12 +137,17 @@ def get_draft(pid: int, uid: str):
         card = _card_dict(c, pid, uid)
         ev = linked_evidence(c, pid, uid)
         title, number = title_and_number(c, pid, uid)
+        index = evidence_index(c, pid)
     confirmed = [e for e in ev if e.get("state") == "사용자 확정"]
+    draft = dict(d) if d else {"body": "", "ai_suggestion": "", "strictness": "엄격"}
     return {
-        "draft": dict(d) if d else {"body": "", "ai_suggestion": "", "strictness": "엄격"},
+        "draft": draft,
         "title": title, "number": number,
         "card": card,
         "evidence_count": len(ev), "confirmed_count": len(confirmed),
+        # 근거 점검기(규칙) — AI 제안과 본문 각각. 의견만, 고치지 않는다.
+        "check": {"suggestion": check_text(draft.get("ai_suggestion", ""), index),
+                  "body": check_text(draft.get("body", ""), index)},
     }
 
 
@@ -170,6 +176,7 @@ def generate_draft(pid: int, uid: str, body: DraftGenIn):
                  model=excluded.model, updated_at=excluded.updated_at""",
             (pid, uid, pid, uid, result["ai_suggestion"], result["strictness"], result["model"], now()),
         )
+        result["check"] = check_text(result["ai_suggestion"], evidence_index(c, pid))
     return result
 
 
@@ -184,7 +191,8 @@ def save_draft_body(pid: int, uid: str, body: DraftBodyIn):
                ON CONFLICT(project_id,node_uid) DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at""",
             (pid, uid, body.body, now()),
         )
-    return {"saved": uid}
+        found = check_text(body.body, evidence_index(c, pid))
+    return {"saved": uid, "check": found}
 
 
 # ────────────── 되돌리기(목차 스냅샷) ──────────────

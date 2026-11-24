@@ -70,6 +70,16 @@ def write_draft(card: dict, evidences: list[dict], title: str, number: str,
     rules = _RULES.get(strictness, _RULES["엄격"])
     style = _STYLE.get(family, _STYLE["계획서"])
 
+    # 확정 전엔 근거가 아니다(원칙 2). 본문을 쓰는 모드에서는 확정 자료와 채택한 진술만 넘긴다 —
+    # 예전엔 미확정 근거도 [미확정] 표시만 달아 함께 넘겼다(2026-11-24 기능 분석에서 짚음).
+    # '자료목록' 모드는 무엇이 더 필요한지 말하는 일이라, 미확정 근거도 '확정 필요'로 보이게 둔다.
+    excluded = []
+    if strictness != "자료목록":
+        usable = [e for e in evidences if evidence_mark(e) in ("확정", "진술")]
+        excluded = [{"ev_no": e.get("ev_no", ""), "claim": (e.get("claim") or "")[:60], "mark": evidence_mark(e)}
+                    for e in evidences if e not in usable]
+        evidences = usable
+
     card_txt = _fmt_card(card)
     ev_txt = _fmt_evidence(evidences)
     has_conf = any(e.get("state") == "사용자 확정" for e in evidences)
@@ -92,7 +102,7 @@ def write_draft(card: dict, evidences: list[dict], title: str, number: str,
     ).strip()
     return {"ai_suggestion": text, "strictness": strictness, "family": family,
             "model": getattr(provider, "model", provider.name),
-            "used_confirmed_evidence": has_conf}
+            "used_confirmed_evidence": has_conf, "excluded": excluded}
 
 
 def _fmt_card(card: dict) -> str:

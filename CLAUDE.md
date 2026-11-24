@@ -123,6 +123,7 @@ backend/
     services/            export_docx.py (.docx 조립: 맑은 고딕 + 근거 부록)
                          templates.py 문서 유형별 목차 틀의 유일한 출처(app/doc_templates/*.json 을 읽고 검사) + family_of(계열 판정)
                          evidence.py  목차에 연결된 근거 모으기(linked_evidence) + 표시(evidence_mark)
+                         evidence_check.py 근거 점검기(규칙): 본문 숫자·근거 번호 ↔ 자료 원문 대조 — AI 를 부르지 않는다
                          numbering.py 근거 번호(E-번호)를 만드는 유일한 자리
                          hwpx_fill.py 한글 보고서 양식 채우기 · hwpx_form.py 서식형 양식 분석·자동 배정
                          doc_read.py  pdf/hwpx/hwp/xlsx/docx → 공통 중간형식(문단·표)
@@ -253,6 +254,8 @@ data_requests, settings`.
 
 ### 한 곳에서만 만든다
 - 근거 번호(E-번호) → `services/numbering.py`.
+- 본문의 숫자·근거 번호 대조(근거 점검기) → `services/evidence_check.py`. 초고 화면·본문 저장·최종본 점검이 같은 `check_text()` 를 쓴다.
+  대조 원문은 **자료 원문 + 근거의 주장·위치**다. AI 요약을 넣지 않는다(요약이 틀리면 틀린 숫자를 통과시킨다). 의견만, 고치지 않는다.
 - 목차에 연결된 근거 모으기 → `services/evidence.py` 의 `linked_evidence()`. 근거의 성격을 새로 만들면 `evidence_mark()` 와 함께 본다.
 - 목차 틀 → 내용은 `app/doc_templates/*.json`(유형 하나에 파일 하나, 칸 이름은 화면의 집필카드 이름), 읽고 검사하는 것은 `services/templates.py`.
   프런트는 `GET /api/templates` 로 받고 `buildFromTemplate` 하나만 쓴다. 틀을 코드(파이썬 dict)로 되돌리지 않는다 — 기여자가 파일 하나로 유형을 보태는 길이다.
@@ -263,6 +266,7 @@ data_requests, settings`.
 - 대시보드 '막힌 곳'(`_blocked_rows()`)은 새로 세지 않는다 — `compute_metrics` 결과만 모은다.
 
 ### 근거·진술 신호
+- 초고(엄격·유연)에는 **확정 자료와 채택한 진술만** 넘긴다(`evidence_mark` 가 확정·진술). 뺀 것은 `excluded` 로 화면에 알린다. '자료목록'만 예외.
 - `source_changed` 는 `POST /evidence/{eid}/acknowledge`('확인함')로만 내린다. 근거 항목을 수정해도 꺼지지 않는다.
 - 프로그램이 센 사실(진행상황)도 `STATEMENT_KIND` 자료로 두어 `[진술]` 로 표시한다. `[확정]` 으로 위장시키지 않는다.
 - `resources.note`(담당자 메모)는 `changed` 계산에서 빼고, AI 분석에도 넘기지 않는다.
