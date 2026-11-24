@@ -119,21 +119,31 @@ def run(provider: str | None = None, install_fake=None, keep_db: bool = False) -
         case("C1", "자료분석: 지어낸 숫자 없음", not made_up,
              "지어낸 숫자 없음" if not made_up else f"원문에 없는 숫자: {', '.join(made_up)}",
              model=a.get("model", ""), output=said)
-        call("post", f"/api/projects/{pid}/resources/{rid}/confirm")
-        call("post", f"/api/projects/{pid}/evidence",
-             json={"claim": "읍·면별 65세 이상 인구와 고령화율·독거노인 수(2024~2026)",
-                   "resource_id": rid, "locator": "표 1", "node_uid": "pop"})
+        # 근거 고리: 화면과 같은 길 — 인용이 원문에 그대로 있는 후보만 골라 '한 번에 채택'(확정 + 근거 + 목차 연결).
+        # 그런 후보가 없으면(C8 이 실패할 때) 예전 길(인용 없는 근거 직접 만들기)로 C2 를 이어 간다.
+        picks = [{"claim": x["claim"], "quote": x.get("quote", "")}
+                 for x in a.get("claims", []) if x.get("quote_state") == "일치"]
+        if picks:
+            ad = call("post", f"/api/projects/{pid}/resources/{rid}/adopt",
+                      json={"claims": picks, "node_uid": "pop"})
+            path_note = f"채택 길 — 원문 인용 근거 {ad['created']}건을 초고에 넘김"
+        else:
+            call("post", f"/api/projects/{pid}/resources/{rid}/confirm")
+            call("post", f"/api/projects/{pid}/evidence",
+                 json={"claim": "읍·면별 65세 이상 인구와 고령화율·독거노인 수(2024~2026)",
+                       "resource_id": rid, "locator": "표 1", "node_uid": "pop"})
+            path_note = "인용 후보 없음 — 예전 길(인용 없는 근거, 요약을 넘김)"
 
         # ── C2 초고(근거 있음) ──
         g = call("post", f"/api/projects/{pid}/nodes/pop/draft/generate", json={"strictness": "엄격", "provider": P})
         tidied += g.get("tidied", [])
         sug = g["ai_suggestion"]
-        bad = [x for x in g["check"] if x["kind"] in ("없는 근거 번호", "원문에 없는 숫자")]
+        bad = [x for x in g["check"] if x["kind"] in ("없는 근거 번호", "원문에 없는 숫자", "따옴표 안 글이 원문에 없음")]
         cited = "(근거: E-" in sug or "(근거:E-" in sug
         case("C2", "초고(근거 있음): 근거 밖 숫자 없음 + 근거 번호", not bad and cited,
              ("통과" if not bad and cited else
               "; ".join([f"{x['kind']}: {x['text']}" for x in bad] + ([] if cited else ["근거 번호를 하나도 달지 않음"]))),
-             model=g.get("model", ""), output=sug,
+             model=g.get("model", ""), output=sug, note=path_note,
              findings=[f"{x['level']} {x['kind']}" for x in g["check"]])
 
         # ── C3 초고(근거 없음) ──
@@ -194,6 +204,14 @@ def run(provider: str | None = None, install_fake=None, keep_db: bool = False) -
         # ── C7 초고 지시문 준수(마크다운) ──
         case("C7", "초고 지시문 준수: 제목 되풀이·마크다운을 쓰지 않음", not tidied,
              "통과" if not tidied else f"정리기가 {len(tidied)}곳 걷어 냄: " + " / ".join(tidied[:4]))
+        # ── C8 근거 고리: 주장 후보의 인용이 원문에 글자 그대로 있는가(C1 의 분석 결과로 채점 — 추가 호출 없음) ──
+        cands = a.get("claims", [])
+        off = [x for x in cands if x.get("quote_state") != "일치"]
+        case("C8", "자료분석: 주장 후보의 원문 인용이 글자 그대로", bool(cands) and not off,
+             ("주장 후보를 하나도 내지 않음" if not cands else
+              "통과" if not off else
+              f"후보 {len(cands)}개 중 {len(off)}개의 인용이 원문에 없음: " + " / ".join(x.get("quote", "")[:30] for x in off[:3])),
+             model=a.get("model", ""), output="\n".join(f"{x['claim']} ← “{x.get('quote', '')}”" for x in cands))
     except Exception as e:                       # 키 없음·네트워크 등 — 그 자리에서 멈추고 그대로 알린다
         case("ERR", "실행 중단", False, str(e)[:500])
     finally:

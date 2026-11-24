@@ -6,7 +6,7 @@ from ..skills.draft_writing import write_draft
 from ..services.numbering import title_and_number
 from ..services.evidence import linked_evidence
 from ..services.evidence_check import check_text, evidence_index
-from ..services import snapshot
+from ..services import provenance, snapshot
 from ..services.templates import family_of
 
 router = APIRouter(prefix="/api/projects", tags=["outline"])
@@ -87,6 +87,8 @@ def put_outline(pid: int, body: OutlineIn):
             (pid,)).fetchall() if r["node_uid"] not in keep]
         for oid in gone_ops:
             c.execute("DELETE FROM review_opinions WHERE id=?", (oid,))
+        # 본문 이력(draft_versions)은 지우지 않는다 — 되돌리기가 본문을 살렸을 때 이력이 없으면 모든 문장이
+        # '사람이 씀'으로 보여 출처 표시가 거짓이 된다. uid 로만 읽으니 남아도 다른 목차에 섞이지 않는다.
         # 근거·자료요청은 지우지 않는다(사람이 만든 기록) — 목차 연결만 끊는다.
         # 설문의 근거 지도도 같다 — 주장과 문항은 사람이 세운 설계라 남기고 연결만 끊는다.
         for table in ("evidence", "data_requests", "survey_claims"):
@@ -138,6 +140,7 @@ def get_draft(pid: int, uid: str):
         ev = linked_evidence(c, pid, uid)
         title, number = title_and_number(c, pid, uid)
         index = evidence_index(c, pid)
+        prov = provenance.for_node(c, pid, uid, d["body"] if d else "")
     confirmed = [e for e in ev if e.get("state") == "사용자 확정"]
     draft = dict(d) if d else {"body": "", "ai_suggestion": "", "strictness": "엄격"}
     return {
@@ -148,6 +151,7 @@ def get_draft(pid: int, uid: str):
         # 근거 점검기(규칙) — AI 제안과 본문 각각. 의견만, 고치지 않는다.
         "check": {"suggestion": check_text(draft.get("ai_suggestion", ""), index),
                   "body": check_text(draft.get("body", ""), index)},
+        "provenance": prov,
     }
 
 
@@ -176,6 +180,7 @@ def generate_draft(pid: int, uid: str, body: DraftGenIn):
                  model=excluded.model, updated_at=excluded.updated_at""",
             (pid, uid, pid, uid, result["ai_suggestion"], result["strictness"], result["model"], now()),
         )
+        provenance.record(c, pid, uid, "AI 제안", result["ai_suggestion"], result["model"])
         result["check"] = check_text(result["ai_suggestion"], evidence_index(c, pid))
     return result
 
@@ -191,8 +196,18 @@ def save_draft_body(pid: int, uid: str, body: DraftBodyIn):
                ON CONFLICT(project_id,node_uid) DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at""",
             (pid, uid, body.body, now()),
         )
+        provenance.record(c, pid, uid, "본문", body.body)
         found = check_text(body.body, evidence_index(c, pid))
-    return {"saved": uid, "check": found}
+        prov = provenance.for_node(c, pid, uid, body.body)
+    return {"saved": uid, "check": found, "provenance": prov}
+
+
+@router.get("/{pid}/nodes/{uid}/draft/history")
+def get_draft_history(pid: int, uid: str):
+    """본문 이력(최신 순): AI 제안과 사람이 저장한 본문. 덮어쓰지 않은 기록이다."""
+    with connect() as c:
+        _require_project(c, pid)
+        return provenance.history(c, pid, uid)
 
 
 # ────────────── 되돌리기(목차 스냅샷) ──────────────

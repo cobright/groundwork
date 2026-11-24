@@ -56,7 +56,7 @@ export default function DraftRoom({ pid }) {
   function saveBodySoon(v) {
     setFlag("저장 중…"); clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
-      try { const r = await api.saveDraftBody(pid, uid, v); setFlag("저장됨"); setCtx((c) => c && ({ ...c, check: { ...(c.check || {}), body: r.check || [] } })); } catch (e) { setFlag("저장 실패"); setErr(String(e.message || e)); }
+      try { const r = await api.saveDraftBody(pid, uid, v); setFlag("저장됨"); setCtx((c) => c && ({ ...c, check: { ...(c.check || {}), body: r.check || [] }, provenance: r.provenance })); } catch (e) { setFlag("저장 실패"); setErr(String(e.message || e)); }
     }, 500);
   }
 
@@ -118,6 +118,7 @@ export default function DraftRoom({ pid }) {
             <p className="eyebrow" style={{ marginTop: 18 }}>본문 (사용자 확정)</p>
             <textarea className="bodyedit" value={body} onChange={(e) => onBody(e.target.value)} placeholder="이 목차의 본문입니다. AI 제안을 반영하거나 직접 작성하세요." />
             {body.trim() && <CheckList items={ctx.check?.body} what="본문" />}
+            {body.trim() && <Provenance prov={ctx.provenance} pid={pid} uid={uid} />}
           </>
         )}
       </section>
@@ -156,6 +157,43 @@ function CheckList({ items, what }) {
           <div className="cksent">“{f.sentence}”</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+
+// 본문의 출처 — 문장마다 AI 그대로 / 사람이 고침 / 사람이 씀. 의견만, 고치지 않는다(원칙 1).
+// 원칙 1(AI는 제안, 사람이 확정)을 나중에 보여 줄 수 있는 기록이다.
+function Provenance({ prov, pid, uid }) {
+  const [open, setOpen] = useState(false);
+  const [hist, setHist] = useState(null);
+  useEffect(() => { setOpen(false); setHist(null); }, [uid]);
+  if (!prov) return null;
+  const n = prov.counts || {};
+  async function showHistory() {
+    if (hist) { setHist(null); return; }
+    try { setHist(await api.draftHistory(pid, uid)); } catch { setHist([]); }
+  }
+  return (
+    <div className="provbox">
+      <div className="provhead">
+        <span>본문 출처 · <b className="pv-ai">AI 그대로 {n["AI 그대로"] || 0}</b> · <b className="pv-ed">사람이 고침 {n["사람이 고침"] || 0}</b> · <b className="pv-hu">사람이 씀 {n["사람이 씀"] || 0}</b> 문장</span>
+        <span><button className="btn sm ghost" onClick={() => setOpen(!open)}>{open ? "문장 접기" : "문장별 보기"}</button>
+          <button className="btn sm ghost" onClick={showHistory}>{hist ? "이력 접기" : "이력"}</button></span>
+      </div>
+      {open && (prov.sentences || []).map((x, i) => (
+        <div key={i} className={"provline pv-" + ({ "AI 그대로": "ai", "사람이 고침": "ed", "사람이 씀": "hu" }[x.origin])}>
+          <span className="provtag">{x.origin}</span>{x.sentence}
+        </div>
+      ))}
+      {open && prov.ai_versions === 0 && <div className="hint">이 목차에는 AI 제안 기록이 없습니다 — 모든 문장이 ‘사람이 씀’으로 보입니다.</div>}
+      {hist && (hist.length === 0 ? <div className="hint">아직 이력이 없습니다.</div> : hist.map((h) => (
+        <details key={h.id} className="provhist">
+          <summary>{h.created_at} · {h.origin}{h.model ? ` (${h.model})` : ""} · {h.body.length}자</summary>
+          <div className="sugtext">{h.body}</div>
+        </details>
+      )))}
+      <div className="hint">이력은 AI 제안과 저장한 본문을 덮어쓰지 않고 남긴 것입니다(10분 안에 이어 쓴 저장은 한 줄로 묶음).</div>
     </div>
   );
 }

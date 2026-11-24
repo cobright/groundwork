@@ -90,7 +90,7 @@ backend/
   requirements-dev.txt   개발·테스트 전용(pytest). 꾸러미·1_SETUP 에는 넣지 않는다
   tests/                 pytest. conftest.py 가 임시 DB·가짜 AI(fake_ai)·모의데이터(mock_file)를 준다
                          hwpx_sample.py 시험용 가상 보고서 양식(실제 기관 양식은 공개 저장소에 넣지 않는다)
-  evals/ai_eval.py       AI 품질 시험 묶음: 모의데이터로 실제 AI 를 돌려 **규칙으로** 채점(C1~C6). 요금이 든다 — 손으로 돌린다
+  evals/ai_eval.py       AI 품질 시험 묶음: 모의데이터로 실제 AI 를 돌려 **규칙으로** 채점(C1~C8 — C8 은 원문 인용이 글자 그대로인가). 요금이 든다 — 손으로 돌린다
   app/
     main.py              FastAPI 진입점. .env를 backend 기준으로 로드.
                          라우터 등록. frontend/dist 있으면 "/"로 정적 서빙.
@@ -125,7 +125,9 @@ backend/
     services/            export_docx.py (.docx 조립: 맑은 고딕 + 근거 부록)
                          templates.py 문서 유형별 목차 틀의 유일한 출처(app/doc_templates/*.json 을 읽고 검사) + family_of(계열 판정)
                          evidence.py  목차에 연결된 근거 모으기(linked_evidence) + 표시(evidence_mark)
-                         evidence_check.py 근거 점검기(규칙): 본문 숫자·근거 번호 ↔ 자료 원문 대조 — AI 를 부르지 않는다
+                         evidence_check.py 근거 점검기(규칙): 본문 숫자·근거 번호·인용 ↔ 자료 원문 대조 — AI 를 부르지 않는다
+                         quote.py     원문 인용이 자료 본문에 그대로 있는가(공백·표 구분자만 무시) — 판정하는 유일한 자리
+                         provenance.py 본문 이력(draft_versions) + 문장별 출처(AI 그대로/사람이 고침/사람이 씀)
                          numbering.py 근거 번호(E-번호)를 만드는 유일한 자리
                          hwpx_fill.py 한글 보고서 양식 채우기 · hwpx_form.py 서식형 양식 분석·자동 배정
                          doc_read.py  pdf/hwpx/hwp/xlsx/docx → 공통 중간형식(문단·표)
@@ -188,6 +190,8 @@ data_requests, settings`.
   네 번째 공급자 **호환 서버**(`compat`)는 회사가 아니라 **주소**를 고른다: `ai.COMPAT_BASE_URL`·
   `ai.COMPAT_API_KEY`(없어도 된다)·`ai.COMPAT_MODEL`(추천값이 없어 반드시 적는다).
   자세한 논점은 `docs/design/compat-provider.md`.
+- `evidence.quote`: 원문 인용 구간(자료 본문에서 글자 그대로). `resource_analysis.claims`: 분석이 낸 주장 후보(JSON, 제안일 뿐 근거 아님).
+- `draft_versions`: 본문 이력(AI 제안·본문, 10분 안의 본문 저장은 한 줄로). 목차 uid 에 묶이지만 `put_outline` 이 지우지 않는다.
 - `resources.note`: **담당자 메모**. 자료의 내용(`text`)이 아니라 그 자료를 어떻게 볼지에 대한
   사람의 말이다. 확정 해제·근거 변경신호를 켜지 않고, AI 분석에도 넘기지 않는다.
 - `resource_files`: 자료에 올린 **원본 파일**(BLOB) + 읽은 결과 요약. 자료 1건에 파일 1개.
@@ -220,6 +224,7 @@ data_requests, settings`.
 | 보고전·담당자 진술·보고전 뽑기(`spinoff`)·`family_of` | `docs/design/brief.md` |
 | 공모 가이드라인 읽기·분석·배점·정정 공고 (`guideline.py`·`guideline_analysis.py`·`gldiff.py`) | `docs/design/guideline.md` |
 | 부서 회신 파일·요청 대조·원본 보관 (`attachments.py`·`resource_analysis.py` 의 `ASKED_RULE`) | `docs/design/reply-files.md` |
+| 근거 고리: 주장 후보·원문 인용·한 번에 채택·본문 출처 (`quote.py`·`provenance.py`·`/resources/{rid}/adopt`) | `docs/design/evidence-loop.md` |
 | 호환 서버(공통기반 모델)·AI 공급자를 더하기 (`compat_provider.py`·`aiconfig.PROVIDERS`) | `docs/design/compat-provider.md` |
 | **두 PC 작업 방식 · 행정망 PC 제약** | `docs/work-setup.md` |
 | 주민 설문(구성·정리·분석)·GIS 단계구분도 — **①~④ 만듦(v0.29), ⑤~⑧·GIS 는 방향만** | `docs/design/survey.md` |
@@ -256,6 +261,8 @@ data_requests, settings`.
 
 ### 한 곳에서만 만든다
 - 근거 번호(E-번호) → `services/numbering.py`.
+- 원문 인용 판정(`quote_state`) → `services/quote.py`. 저장하지 않고 읽을 때마다 본다(자료를 고치면 따라 바뀐다). 비슷함으로 넓히지 않는다.
+- 문장별 출처 → `services/provenance.py`. 출처도 저장하지 않고 계산한다. `draft_versions` 는 `put_outline` 에서 지우지 않는다(되돌린 본문이 '사람이 씀'으로 둔갑한다).
 - 본문의 숫자·근거 번호 대조(근거 점검기) → `services/evidence_check.py`. 초고 화면·본문 저장·최종본 점검이 같은 `check_text()` 를 쓴다.
   대조 원문은 **자료 원문 + 근거의 주장·위치**다. AI 요약을 넣지 않는다(요약이 틀리면 틀린 숫자를 통과시킨다). 의견만, 고치지 않는다.
 - 목차에 연결된 근거 모으기 → `services/evidence.py` 의 `linked_evidence()`. 근거의 성격을 새로 만들면 `evidence_mark()` 와 함께 본다.
@@ -271,6 +278,9 @@ data_requests, settings`.
 - AI 초고의 마크다운은 `draft_writing.tidy_markup()` 이 **표시만** 걷는다(목차 제목을 되풀이한 줄은 빼고, `#`·`**` 는 뗀다).
   글의 내용을 고치는 정리를 여기에 더하지 않는다(원칙 1). 정리한 것은 `tidied` 로 화면에 알린다.
 - 근거 점검기는 **줄 끝**의 근거 번호를 그 줄의 앞 문장에 물려준다(뒤→앞만). 번호 자체의 문제는 단 문장에서만 짚는다.
+- 회신을 근거로 만드는 짧은 길은 `POST /resources/{rid}/adopt` 하나다(확정+근거+목차 연결). 요청과 다른 회신이면 확정과 같은 409(`_ask_before_confirm`)를 거친다.
+- 초고에는 근거의 **원문 인용**을 넘기고, 인용이 없는 옛 근거만 'AI 요약 — 원문 아님'으로 밝혀 요약을 넘긴다. 점검기의 따옴표 대조는 큰따옴표만(작은따옴표는 강조).
+- 근거 수정(`PUT /evidence/{eid}`)에서 `quote` 를 보내지 않으면 그대로 둔다(None) — 옛 화면이 인용을 지우지 않게.
 - 초고(엄격·유연)에는 **확정 자료와 채택한 진술만** 넘긴다(`evidence_mark` 가 확정·진술). 뺀 것은 `excluded` 로 화면에 알린다. '자료목록'만 예외.
 - `source_changed` 는 `POST /evidence/{eid}/acknowledge`('확인함')로만 내린다. 근거 항목을 수정해도 꺼지지 않는다.
 - 프로그램이 센 사실(진행상황)도 `STATEMENT_KIND` 자료로 두어 `[진술]` 로 표시한다. `[확정]` 으로 위장시키지 않는다.

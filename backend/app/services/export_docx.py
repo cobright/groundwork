@@ -30,7 +30,8 @@ def _evidence_rows(c, pid):
             name = r["name"] if r else ""
             state = a["state"] if a else ""
         out.append({"no": nos.get(e["id"], ""), "claim": e["claim"], "resource": name or "근거 없음",
-                    "locator": e["locator"], "status": e["status"], "confirmed": state == "사용자 확정"})
+                    "locator": e["locator"], "quote": e["quote"] if "quote" in e.keys() else "",
+                    "status": e["status"], "confirmed": state == "사용자 확정"})
     return out
 
 
@@ -246,14 +247,18 @@ def _finish(doc, proj, ev, include_evidence) -> tuple[bytes, str]:
         table = doc.add_table(rows=1, cols=5)
         table.style = "Light Grid Accent 1"
         hdr = table.rows[0].cells
-        for i, h in enumerate(["번호", "주장·판단", "근거자료", "위치", "상태"]):
+        for i, h in enumerate(["번호", "주장·판단", "근거자료", "위치·원문 인용", "상태"]):
             hdr[i].text = h
         for r in ev:
             cells = table.add_row().cells
             cells[0].text = r["no"] or ""
             cells[1].text = r["claim"] or ""
             cells[2].text = (r["resource"] or "") + (" ✔" if r["confirmed"] else "")
-            cells[3].text = r["locator"] or ""
+            # 원문 인용은 '이 주장이 원문의 어느 글에서 왔는가' — 심사자·감사자가 찾아갈 자리다.
+            q = (r.get("quote") or "").strip()
+            loc = (r["locator"] or "").strip()
+            shown = f"“{q[:150]}{'…' if len(q) > 150 else ''}”" if q else ""
+            cells[3].text = "\n".join(x for x in (loc if loc != q else "", shown) if x)
             cells[4].text = r["status"] or ""
 
     buf = io.BytesIO()
@@ -299,6 +304,14 @@ def final_check(pid) -> dict:
             if miss:
                 r = c.execute("SELECT name FROM resources WHERE id=?", (e["resource_id"],)).fetchone()
                 mismatched.append(f"{nos.get(e['id'], '')} {(r['name'] if r else '')[:40]} — 요청한 것 {len(miss)}가지 없음")
+        # ④ 원문 인용이 자료 본문에 그대로 없는 근거(근거 고리 — 부록이 '원문'이라 말하는 글이 원문에 없다)
+        from .quote import quote_state
+        bad_quotes = []
+        for e in evs:
+            if e["resource_id"] and (e.get("quote") or "").strip():
+                r = c.execute("SELECT text FROM resources WHERE id=?", (e["resource_id"],)).fetchone()
+                if quote_state(e["quote"], r["text"] if r else "") == "불일치":
+                    bad_quotes.append(f"{nos.get(e['id'], '')} {(e['claim'] or '')[:40]}")
         # ③ '회신옴'인데 받은 자료가 지워진 요청(요청 대장이 받지 않은 것을 받았다고 말한다)
         lost = [r["need"][:50] for r in c.execute(
             "SELECT need FROM data_requests WHERE project_id=? AND status='회신옴' AND received_resource_id IS NOT NULL "
@@ -329,6 +342,9 @@ def final_check(pid) -> dict:
     if mismatched:
         items.append({"level": "중요", "label": "요청과 다른 회신을 근거로 씀",
                       "detail": mismatched + ["부록에는 요청 이름으로 보입니다 — 맞는 자료를 다시 받거나, 근거를 바꾸세요"]})
+    if bad_quotes:
+        items.append({"level": "중요", "label": "원문 인용이 자료 본문에 없는 근거",
+                      "detail": bad_quotes + ["자료를 고쳤거나 인용을 잘못 옮겼습니다 — 근거표에서 인용을 원문대로"]})
     if blank_claims:
         items.append({"level": "중요", "label": "주장이 비어 있는 근거",
                       "detail": [f"{n or '(번호 없음)'} — 근거표에서 주장 칸을 채우세요(부록에 그대로 나갑니다)"

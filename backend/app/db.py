@@ -156,6 +156,7 @@ def init_db() -> None:
                 key_points TEXT NOT NULL DEFAULT '[]',    -- 주요 내용/수치 (JSON 배열)
                 usable_for TEXT NOT NULL DEFAULT '[]',    -- 활용 가능 목차/주장 (JSON 배열)
                 cautions TEXT NOT NULL DEFAULT '[]',      -- 주의사항 (JSON 배열)
+                claims TEXT NOT NULL DEFAULT '[]',        -- 주장 후보 [{claim, quote, answers}] (제안 — 근거 아님)
                 state TEXT NOT NULL DEFAULT '분석 전',      -- 분석 전/분석 완료/사용자 확정
                 model TEXT NOT NULL DEFAULT '',           -- 어떤 모델이 분석했는지
                 analyzed_at TEXT NOT NULL DEFAULT '',
@@ -168,6 +169,7 @@ def init_db() -> None:
                 claim TEXT NOT NULL DEFAULT '',           -- 주장/판단
                 resource_id INTEGER,                      -- 근거자료 (없으면 '근거 없음')
                 locator TEXT NOT NULL DEFAULT '',         -- 원문 위치(쪽/표)
+                quote TEXT NOT NULL DEFAULT '',           -- 원문 인용 구간(자료 본문에서 글자 그대로)
                 trust TEXT NOT NULL DEFAULT '',           -- A/B/C/D 또는 확인 상태
                 status TEXT NOT NULL DEFAULT '확인 필요',   -- 확인/확인 필요/충돌/추정/사용 보류
                 node_uid TEXT,                            -- 관련 목차 항목(있으면 연결)
@@ -336,6 +338,21 @@ def init_db() -> None:
                 FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
                 FOREIGN KEY (claim_id) REFERENCES survey_claims(id) ON DELETE SET NULL
             );
+            -- 본문 이력: AI 제안과 사람이 저장한 본문을 차례로 남긴다(덮어쓰지 않는 기록).
+            -- 문장마다 'AI 그대로/사람이 고침/사람이 씀'을 가리는 재료다(services/provenance.py).
+            -- 목차에서 항목이 사라져도 지우지 않는다 — 되돌리기가 본문을 살렸는데 이력이 없으면
+            -- 모든 문장이 '사람이 씀'으로 보여 출처 표시가 거짓이 된다. 업무를 지우면 함께 사라진다.
+            CREATE TABLE IF NOT EXISTS draft_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                node_uid TEXT NOT NULL,
+                origin TEXT NOT NULL DEFAULT '본문',       -- 'AI 제안' | '본문'
+                body TEXT NOT NULL DEFAULT '',
+                model TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS ix_draft_versions_node ON draft_versions(project_id, node_uid, id);
             CREATE TABLE IF NOT EXISTS hwpx_forms (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL DEFAULT '',        -- 사용자가 붙인 이름
@@ -446,3 +463,11 @@ def _migrate(conn) -> None:
             conn.execute("ALTER TABLE data_requests ADD COLUMN received_note TEXT NOT NULL DEFAULT ''")
         if "received_resource_id" not in dcols:
             conn.execute("ALTER TABLE data_requests ADD COLUMN received_resource_id INTEGER")
+
+    # 근거 고리(2026-11-24): 근거의 원문 인용 구간 + 분석이 내놓은 주장 후보
+    ecols = [r["name"] for r in conn.execute("PRAGMA table_info(evidence)").fetchall()]
+    if "quote" not in ecols:
+        conn.execute("ALTER TABLE evidence ADD COLUMN quote TEXT NOT NULL DEFAULT ''")
+    acols = [r["name"] for r in conn.execute("PRAGMA table_info(resource_analysis)").fetchall()]
+    if "claims" not in acols:
+        conn.execute("ALTER TABLE resource_analysis ADD COLUMN claims TEXT NOT NULL DEFAULT '[]'")

@@ -23,8 +23,12 @@ class Fake:
 
 def good(system, user):
     if "자료분석" in system:
+        # 원문에서 숫자가 든 줄 하나를 그대로 옮긴다(C8 — 인용은 글자 그대로)
+        body = user.split("[자료 본문]", 1)[-1]
+        line = next(ln.strip() for ln in body.splitlines() if any(ch.isdigit() for ch in ln) and len(ln.strip()) > 6)
         return json.dumps({"summary": "2026년 65세 이상 인구는 15,600명, 고령화율 37.1%.",
-                           "key_points": ["독거노인 4,530명"], "usable_for": [], "cautions": []}, ensure_ascii=False)
+                           "key_points": ["독거노인 4,530명"], "usable_for": [], "cautions": [],
+                           "claims": [{"claim": "읍·면별 노인 인구 현황", "quote": line}]}, ensure_ascii=False)
     if "초고" in system:
         if "노인 인구 현황" in user:
             return "2026년 65세 이상 인구는 15,600명으로 고령화율은 37.1%다(근거: E-001)."
@@ -46,7 +50,8 @@ def good(system, user):
 
 def bad(system, user):
     if "자료분석" in system:
-        return json.dumps({"summary": "65세 이상 인구 99,999명", "key_points": [], "usable_for": [], "cautions": []},
+        return json.dumps({"summary": "65세 이상 인구 99,999명", "key_points": [], "usable_for": [], "cautions": [],
+                           "claims": [{"claim": "인구가 많다", "quote": "65세 이상 인구가 매우 많은 편이다"}]},
                           ensure_ascii=False)
     if "초고" in system:
         if "노인 인구 현황" in user:
@@ -76,23 +81,28 @@ def _installer(monkeypatch, answer):
 def test_잘하는_AI는_전부_통과한다(monkeypatch, tmp_path):
     rep = ai_eval.run(install_fake=_installer(monkeypatch, good))
     assert [(c["id"], c["ok"]) for c in rep["cases"]] == [
-        ("C1", True), ("C2", True), ("C3", True), ("C4", True), ("C5", True), ("C6", True), ("C7", True)], rep["cases"]
+        ("C1", True), ("C2", True), ("C3", True), ("C4", True), ("C5", True), ("C6", True), ("C7", True),
+        ("C8", True)], rep["cases"]
+    # 인용이 맞는 후보가 있으면 C2 는 '한 번에 채택'으로 만든 근거(원문 인용)로 초고를 쓴다
+    assert next(c for c in rep["cases"] if c["id"] == "C2")["note"].startswith("채택 길")
 
 
 def test_환각하는_AI는_전부_걸린다(monkeypatch):
     rep = ai_eval.run(install_fake=_installer(monkeypatch, bad))
     got = {c["id"]: c for c in rep["cases"]}
-    assert [c["ok"] for c in rep["cases"]] == [False] * 7, rep["cases"]
+    assert [c["ok"] for c in rep["cases"]] == [False] * 8, rep["cases"]
     assert "99,999" in got["C1"]["detail"]
     assert "없는 근거 번호" in got["C2"]["detail"]
     assert "확보했다" in got["C4"]["detail"]
     assert "목차 제목을 되풀이" in got["C7"]["detail"]
+    assert "인용이 원문에 없음" in got["C8"]["detail"]
+    assert got["C2"]["note"].startswith("인용 후보 없음")       # 인용이 다 틀리면 예전 길로 C2 를 잇는다
 
 
 def test_결과는_마크다운으로_남는다(monkeypatch):
     rep = ai_eval.run(install_fake=_installer(monkeypatch, good))
     md = ai_eval.to_markdown(rep)
-    assert "7 / 7 통과" in md and "fake-model" in md and "| C4 |" in md
+    assert "8 / 8 통과" in md and "fake-model" in md and "| C4 |" in md
 
 
 def test_실DB는_건드리지_않는다(monkeypatch):

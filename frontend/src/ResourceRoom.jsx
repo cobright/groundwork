@@ -29,6 +29,9 @@ export default function ResourceRoom({ pid }) {
   const [stmtOpen, setStmtOpen] = useState(false);
   const [stmtText, setStmtText] = useState("");
   const [stmtRid, setStmtRid] = useState(null);
+  const [pickMap, setPickMap] = useState({});     // `${자료 id}:${후보 순번}` → 골랐는가(사람이 바꾼 것만)
+  const [adoptNode, setAdoptNode] = useState("");  // 비우면 회신을 부른 요청의 목차
+  const [adoptNote, setAdoptNote] = useState("");
   const [stmtClaims, setStmtClaims] = useState([]);   // [{claim, quote, opinion, pick}]
   const [stmtNode, setStmtNode] = useState("");
   const [stmtNote, setStmtNote] = useState("");
@@ -148,6 +151,30 @@ export default function ResourceRoom({ pid }) {
         node_uid: stmtNode || null,
       });
       setStmtText(""); setStmtClaims([]); setStmtRid(null); setStmtNote(""); setStmtOpen(false);
+      await reload();
+    } catch (e) { setErr(String(e.message || e)); }
+  }
+
+  // ── 근거 고리: 분석의 주장 후보 → 한 번에 채택 ──
+  // 고르는 것은 사람이다(원칙 1). 인용이 원문에 그대로 있는 후보만 처음부터 골라 둔다.
+  function candPicked(i, c) { return pickMap[`${sel.id}:${i}`] ?? (c.quote_state === "일치" && !adoptedClaim(c)); }
+  function adoptedClaim(c) { return evidence.some((e) => e.resource_id === sel.id && e.claim === c.claim); }
+  async function adoptCandidates() {
+    const cands = arr(sel.analysis?.claims);
+    const picked = cands.filter((c, i) => candPicked(i, c) && !adoptedClaim(c));
+    if (!picked.length) { alert("근거로 삼을 주장을 하나 이상 고르세요."); return; }
+    const miss = arr(sel.analysis?.asked_missing);
+    let force = false;
+    if (miss.length) {
+      if (!confirm(`요청한 것 ${miss.length}가지가 이 회신 자료에 없습니다.\n\n${miss.join("\n")}\n\n그래도 골라 둔 주장을 근거로 삼을까요?`)) return;
+      force = true;
+    }
+    try {
+      const r = await api.adoptClaims(pid, sel.id, { claims: picked.map(({ claim, quote }) => ({ claim, quote })), node_uid: adoptNode || null, force });
+      const where = r.node_uid ? `${numberMap[r.node_uid] || ""} ${(outline.find((n) => n.uid === r.node_uid) || {}).title || ""}`.trim() : "목차 연결 없음";
+      setAdoptNote(`근거 ${r.created}건을 만들었습니다 → ${where}${r.linked_from_request ? " (요청의 목차)" : ""}`
+        + (r.skipped ? ` · 이미 있는 ${r.skipped}건은 건너뜀` : ""));
+      setPickMap({});
       await reload();
     } catch (e) { setErr(String(e.message || e)); }
   }
@@ -381,6 +408,35 @@ export default function ResourceRoom({ pid }) {
                 {sel.analysis.model && <div className="amodel">분석 모델: {sel.analysis.model}</div>}
               </div>
             )}
+            {!selRef && arr(sel.analysis?.claims).length > 0 && sel.analysis.state !== "재분석 필요" && (
+              <div className="candbox">
+                <div className="candhead"><b>근거로 삼을 주장 후보</b> <span className="hint">AI 제안 · 고른 것만 근거가 됩니다</span></div>
+                {arr(sel.analysis.claims).map((c, i) => {
+                  const done = adoptedClaim(c);
+                  return (
+                    <label key={i} className={"cand" + (done ? " done" : "") + (c.quote_state === "불일치" ? " bad" : "")}>
+                      <input type="checkbox" disabled={done} checked={done || candPicked(i, c)}
+                        onChange={(e) => setPickMap((m) => ({ ...m, [`${sel.id}:${i}`]: e.target.checked }))} />
+                      <span className="candbody">
+                        <span className="candclaim">{c.claim}{done && <em className="hint"> — 채택함</em>}</span>
+                        {c.answers && <span className="candans">요청: {c.answers}</span>}
+                        <span className="candquote">“{c.quote || "(인용 없음)"}”
+                          <span className={"qst q-" + c.quote_state}>{c.quote_state === "일치" ? "원문에 있음" : c.quote_state === "불일치" ? "원문에서 그대로 찾지 못함" : "인용 없음"}</span></span>
+                      </span>
+                    </label>
+                  );
+                })}
+                <div className="candbar">
+                  <select value={adoptNode} onChange={(e) => setAdoptNode(e.target.value)}>
+                    <option value="">{sel.reply_of ? "요청의 목차로(자동)" : "목차 연결 안 함"}</option>
+                    {outline.map((n) => <option key={n.uid} value={n.uid}>{numberMap[n.uid]} {n.title}</option>)}
+                  </select>
+                  <button className="btn primary" onClick={adoptCandidates}>고른 것 근거로 채택</button>
+                </div>
+                <div className="hint">채택하면 이 자료가 확정되고, 주장과 원문 인용이 근거표에 들어갑니다. 원문에서 그대로 찾지 못한 인용은 ‘확인 필요’로 들어갑니다.</div>
+                {adoptNote && <div className="sugnote">{adoptNote}</div>}
+              </div>
+            )}
           </>
         )}
       </section>
@@ -406,6 +462,14 @@ export default function ResourceRoom({ pid }) {
               </select>
               <input className="evloc" value={row.locator} onChange={(e) => patchEvidence(row, { locator: e.target.value })} placeholder="위치(쪽/표)" />
             </div>
+            {(row.resource_id || row.quote) && (
+              <div className="evquote">
+                <textarea value={row.quote || ""} onChange={(e) => patchEvidence(row, { quote: e.target.value, quote_state: "" })}
+                  placeholder="원문 인용 — 자료 본문에서 글자 그대로 옮긴 구간(초고와 근거 점검이 이것을 씁니다)" />
+                {row.quote_state === "불일치" && <span className="qst q-불일치">자료 본문에서 그대로 찾지 못함</span>}
+                {row.quote_state === "일치" && <span className="qst q-일치">원문에 있음</span>}
+              </div>
+            )}
             <div className="evrow">
               <select value={row.node_uid || ""} onChange={(e) => patchEvidence(row, { node_uid: e.target.value || null })}>
                 <option value="">목차 연결 안 함</option>

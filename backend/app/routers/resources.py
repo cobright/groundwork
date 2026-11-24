@@ -9,6 +9,7 @@ from ..skills.resource_analysis import analyze_resource, asked_missing
 from ..services.attachments import MAX_BYTES, file_meta, read_upload, store_file
 from ..services.doc_read import ReadError
 from ..services.numbering import attach_evidence_no
+from ..services.quote import quote_state
 
 router = APIRouter(prefix="/api/projects", tags=["resources"])
 
@@ -29,16 +30,21 @@ def _require(c, pid):
         raise HTTPException(404, "업무를 찾을 수 없습니다.")
 
 
-def _analysis_dict(row):
+def _analysis_dict(row, text: str | None = None):
+    """분석 한 건. text(자료 본문)를 주면 주장 후보마다 인용이 원문에 그대로 있는지(quote_state)를 붙인다 —
+    저장하지 않고 읽을 때마다 본다(자료 본문을 고치면 결과가 따라 바뀌어야 한다)."""
     if not row:
-        return {"state": "분석 전", "asked_missing": []}
+        return {"state": "분석 전", "asked_missing": [], "claims": []}
     d = dict(row)
-    for k in ("key_points", "usable_for", "cautions"):
+    for k in ("key_points", "usable_for", "cautions", "claims"):
         try:
-            d[k] = json.loads(d[k])
+            d[k] = json.loads(d.get(k) or "[]")
         except Exception:
             d[k] = []
     d["asked_missing"] = asked_missing(d["cautions"])     # 요청했는데 회신에 없는 것
+    if text is not None:
+        for x in d["claims"]:
+            x["quote_state"] = quote_state(x.get("quote", ""), text)
     return d
 
 
@@ -61,12 +67,12 @@ def list_resources(pid: int):
         out = []
         for r in own:
             a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (r["id"],)).fetchone()
-            item = dict(r); item["analysis"] = _analysis_dict(a); item["source"] = "own"
+            item = dict(r); item["analysis"] = _analysis_dict(a, r["text"]); item["source"] = "own"
             item["file"] = files.get(r["id"]); item["reply_of"] = _reply_of(c, r["id"])
             out.append(item)
         for r in refs:
             a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (r["id"],)).fetchone()
-            item = dict(r); item["analysis"] = _analysis_dict(a); item["file"] = files.get(r["id"])
+            item = dict(r); item["analysis"] = _analysis_dict(a, r["text"]); item["file"] = files.get(r["id"])
             if r["dept_id"] is not None:
                 item["source"] = "library"
                 dep = c.execute("SELECT name FROM departments WHERE id=?", (r["dept_id"],)).fetchone()
@@ -200,7 +206,7 @@ def update_resource(pid: int, rid: int, r: ResourceIn):
         row = c.execute("SELECT * FROM resources WHERE id=?", (rid,)).fetchone()
         a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()
         files = file_meta(c, [rid])
-    item = dict(row); item["analysis"] = _analysis_dict(a); item["file"] = files.get(rid)
+    item = dict(row); item["analysis"] = _analysis_dict(a, row["text"]); item["file"] = files.get(rid)
     return item
 
 
@@ -291,17 +297,28 @@ def analyze(pid: int, rid: int, body: AnalyzeIn):
         raise HTTPException(502, f"AI 분석 실패: {e}")
     with connect() as c:
         c.execute(
-            """INSERT INTO resource_analysis(resource_id,summary,key_points,usable_for,cautions,state,model,analyzed_at)
-               VALUES(?,?,?,?,?,?,?,?)
+            """INSERT INTO resource_analysis(resource_id,summary,key_points,usable_for,cautions,claims,state,model,analyzed_at)
+               VALUES(?,?,?,?,?,?,?,?,?)
                ON CONFLICT(resource_id) DO UPDATE SET
                  summary=excluded.summary, key_points=excluded.key_points, usable_for=excluded.usable_for,
-                 cautions=excluded.cautions, state=excluded.state, model=excluded.model, analyzed_at=excluded.analyzed_at""",
+                 cautions=excluded.cautions, claims=excluded.claims, state=excluded.state,
+                 model=excluded.model, analyzed_at=excluded.analyzed_at""",
             (rid, result["summary"], json.dumps(result["key_points"], ensure_ascii=False),
              json.dumps(result["usable_for"], ensure_ascii=False), json.dumps(result["cautions"], ensure_ascii=False),
+             json.dumps(result.get("claims", []), ensure_ascii=False),
              "분석 완료", result["model"], now()),
         )
         a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()
-    return _analysis_dict(a)
+    return _analysis_dict(a, r["text"])
+
+
+def _ask_before_confirm(a, force: bool) -> None:
+    """회신이 요청과 다르면 확정 전에 한 번 묻는다(409). 확정과 '한 번에 채택'이 같은 물음을 쓴다."""
+    missing = _analysis_dict(a)["asked_missing"]
+    if missing and not force:
+        raise HTTPException(409, f"요청한 것 {len(missing)}가지가 이 회신 자료에 없습니다 — "
+                                 + " / ".join(missing[:3])
+                                 + ". 그래도 확정하시겠습니까? 다른 파일이 왔다면 ‘재요청으로 되돌리기’를 쓰세요.")
 
 
 class ConfirmIn(BaseModel):
@@ -319,14 +336,84 @@ def confirm_analysis(pid: int, rid: int, body: ConfirmIn | None = None):
         a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()
         if not a:
             raise HTTPException(400, "먼저 AI 분석을 실행하세요.")
-        missing = _analysis_dict(a)["asked_missing"]
-        if missing and not (body and body.force):
-            raise HTTPException(409, f"요청한 것 {len(missing)}가지가 이 회신 자료에 없습니다 — "
-                                     + " / ".join(missing[:3])
-                                     + ". 그래도 확정하시겠습니까? 다른 파일이 왔다면 ‘재요청으로 되돌리기’를 쓰세요.")
+        _ask_before_confirm(a, bool(body and body.force))
         c.execute("UPDATE resource_analysis SET state='사용자 확정' WHERE resource_id=?", (rid,))
         a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()
-    return _analysis_dict(a)
+        r = c.execute("SELECT text FROM resources WHERE id=?", (rid,)).fetchone()
+    return _analysis_dict(a, r["text"] if r else None)
+
+
+class PickIn(BaseModel):
+    claim: str
+    quote: str = ""
+
+
+class AdoptIn(BaseModel):
+    claims: list[PickIn] = []
+    node_uid: str | None = None   # 비우면: 이 자료가 회신이면 그 요청의 목차로 잇는다
+    force: bool = False           # 확정과 같은 물음('요청한 것이 없다')을 보고도 채택한다
+
+
+def _resource_in_project(c, pid: int, rid: int):
+    """이 업무에서 쓸 수 있는 자료(직접 등록 또는 참조)."""
+    return c.execute(
+        "SELECT * FROM resources WHERE id=? AND (project_id=? OR id IN "
+        "(SELECT resource_id FROM resource_refs WHERE project_id=?))", (rid, pid, pid)).fetchone()
+
+
+@router.post("/{pid}/resources/{rid}/adopt")
+def adopt_claims(pid: int, rid: int, body: AdoptIn):
+    """근거 고리 닫기 — 분석이 제안한 주장 후보 중 사람이 고른 것을 **한 번에** 근거로 만든다.
+
+    예전엔 회신 하나를 근거로 쓰려면 분석 → 확정 → 주장 직접 쓰기 → 목차 연결의 네 단계였고,
+    실제 업무(#6)에서 '새 주장'이 그대로 남았다. 필요한 정보는 이미 시스템에 있다 —
+    요청은 어느 목차를 위한 것인지 알고, 회신은 어느 요청의 것인지 안다.
+
+    여기서 하는 일(사람이 고른 것만, 원칙 1):
+      · 자료를 '사용자 확정'으로 — 고르는 행위가 곧 그 자료를 읽고 판단한 것이다(진술 채택과 같다).
+        요청과 다른 회신이면 확정과 똑같이 한 번 묻는다(409).
+      · 근거를 만든다 — 주장 + 원문 인용. 인용이 원문에 그대로 있으면 상태 '확인', 아니면 '확인 필요'.
+      · 목차를 잇는다 — 고르지 않았으면 그 회신을 부른 요청의 목차로.
+    같은 자료에 같은 주장이 이미 근거로 있으면 다시 만들지 않는다(두 번 눌러도 같다)."""
+    picked = [x for x in body.claims if x.claim.strip()]
+    if not picked:
+        raise HTTPException(400, "근거로 삼을 주장을 하나 이상 고르세요.")
+    with connect() as c:
+        _require(c, pid)
+        r = _resource_in_project(c, pid, rid)
+        if not r:
+            raise HTTPException(404, "자료를 찾을 수 없습니다.")
+        a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()
+        if not a:
+            raise HTTPException(400, "먼저 AI 분석을 실행하세요.")
+        _ask_before_confirm(a, body.force)
+        node_uid, linked_from = body.node_uid, ""
+        if not node_uid:
+            q = c.execute("SELECT node_uid, need FROM data_requests WHERE project_id=? AND received_resource_id=? "
+                          "AND node_uid IS NOT NULL", (pid, rid)).fetchone()
+            if q:
+                node_uid, linked_from = q["node_uid"], q["need"]
+        if node_uid and not c.execute("SELECT 1 FROM outline_nodes WHERE project_id=? AND uid=?",
+                                      (pid, node_uid)).fetchone():
+            node_uid = None          # 요청의 목차가 이미 사라졌다 — 연결 없이 만든다(화면이 알린다)
+        made, skipped = [], 0
+        for x in picked:
+            claim, cited = x.claim.strip(), (x.quote or "").strip()
+            if c.execute("SELECT 1 FROM evidence WHERE project_id=? AND resource_id=? AND claim=?",
+                         (pid, rid, claim)).fetchone():
+                skipped += 1
+                continue
+            status = "확인" if quote_state(cited, r["text"]) == "일치" else "확인 필요"
+            cur = c.execute(
+                "INSERT INTO evidence(project_id,claim,resource_id,locator,quote,trust,status,node_uid,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?)", (pid, claim, rid, "", cited, "", status, node_uid, now()))
+            made.append(cur.lastrowid)
+        c.execute("UPDATE resource_analysis SET state='사용자 확정' WHERE resource_id=?", (rid,))
+        rows = c.execute("SELECT * FROM evidence WHERE id IN (%s)" % ",".join("?" * len(made)), made).fetchall()             if made else []
+        items = _with_quote_state(c, attach_evidence_no(c, pid, [dict(x) for x in rows]))
+        a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()
+    return {"created": len(items), "skipped": skipped, "evidence": items, "node_uid": node_uid,
+            "linked_from_request": linked_from, "analysis": _analysis_dict(a, r["text"])}
 
 
 # ────────────── 근거표 ──────────────
@@ -334,6 +421,7 @@ class EvidenceIn(BaseModel):
     claim: str = ""
     resource_id: int | None = None
     locator: str = ""
+    quote: str | None = None      # 원문 인용. 보내지 않으면(None) 수정할 때 그대로 둔다(옛 화면이 지우지 않게)
     trust: str = ""
     status: str = "확인 필요"
     node_uid: str | None = None
@@ -344,8 +432,20 @@ def list_evidence(pid: int):
     with connect() as c:
         _require(c, pid)
         rows = c.execute("SELECT * FROM evidence WHERE project_id=? ORDER BY id", (pid,)).fetchall()
-        out = attach_evidence_no(c, pid, [dict(r) for r in rows])
+        out = _with_quote_state(c, attach_evidence_no(c, pid, [dict(r) for r in rows]))
     return out
+
+
+def _with_quote_state(c, items: list[dict]) -> list[dict]:
+    """근거마다 인용이 지금의 자료 본문에 그대로 있는지('없음'/'일치'/'불일치')를 붙인다."""
+    texts: dict = {}
+    for d in items:
+        rid = d.get("resource_id")
+        if rid and rid not in texts:
+            r = c.execute("SELECT text FROM resources WHERE id=?", (rid,)).fetchone()
+            texts[rid] = r["text"] if r else ""
+        d["quote_state"] = quote_state(d.get("quote", ""), texts.get(rid, "")) if rid else             ("없음" if not (d.get("quote") or "").strip() else "불일치")
+    return items
 
 
 @router.post("/{pid}/evidence", status_code=201)
@@ -358,11 +458,13 @@ def add_evidence(pid: int, e: EvidenceIn):
             if not ok:
                 raise HTTPException(400, "연결하려는 자료가 이 업무에 없습니다(직접 등록했거나 공통자료실에서 참조한 자료여야 합니다).")
         cur = c.execute(
-            "INSERT INTO evidence(project_id,claim,resource_id,locator,trust,status,node_uid,created_at) VALUES(?,?,?,?,?,?,?,?)",
-            (pid, e.claim.strip(), e.resource_id, e.locator.strip(), e.trust.strip(), e.status, e.node_uid, now()),
+            "INSERT INTO evidence(project_id,claim,resource_id,locator,quote,trust,status,node_uid,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            (pid, e.claim.strip(), e.resource_id, e.locator.strip(), (e.quote or "").strip(), e.trust.strip(),
+             e.status, e.node_uid, now()),
         )
         row = c.execute("SELECT * FROM evidence WHERE id=?", (cur.lastrowid,)).fetchone()
-        item = attach_evidence_no(c, pid, [dict(row)])[0]
+        item = _with_quote_state(c, attach_evidence_no(c, pid, [dict(row)]))[0]
     return item
 
 
@@ -378,8 +480,10 @@ def update_evidence(pid: int, eid: int, e: EvidenceIn):
             "UPDATE evidence SET claim=?, resource_id=?, locator=?, trust=?, status=?, node_uid=? WHERE id=? AND project_id=?",
             (e.claim.strip(), e.resource_id, e.locator.strip(), e.trust.strip(), e.status, e.node_uid, eid, pid),
         )
+        if e.quote is not None:
+            c.execute("UPDATE evidence SET quote=? WHERE id=?", (e.quote.strip(), eid))
         row = c.execute("SELECT * FROM evidence WHERE id=?", (eid,)).fetchone()
-        item = attach_evidence_no(c, pid, [dict(row)])[0]
+        item = _with_quote_state(c, attach_evidence_no(c, pid, [dict(row)]))[0]
     return item
 
 
@@ -394,7 +498,7 @@ def acknowledge_evidence(pid: int, eid: int):
             raise HTTPException(404, "근거 항목을 찾을 수 없습니다.")
         c.execute("UPDATE evidence SET source_changed=0 WHERE id=? AND project_id=?", (eid, pid))
         row = c.execute("SELECT * FROM evidence WHERE id=?", (eid,)).fetchone()
-        item = attach_evidence_no(c, pid, [dict(row)])[0]
+        item = _with_quote_state(c, attach_evidence_no(c, pid, [dict(row)]))[0]
     return item
 
 

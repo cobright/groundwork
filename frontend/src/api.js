@@ -49,6 +49,7 @@ export const api = {
   getDraft: (id, uid) => req(`/projects/${id}/nodes/${uid}/draft`),
   generateDraft: (id, uid, strictness, provider) => req(`/projects/${id}/nodes/${uid}/draft/generate`, { method: "POST", body: JSON.stringify({ strictness, provider: provider || null }) }),
   saveDraftBody: (id, uid, body) => req(`/projects/${id}/nodes/${uid}/draft`, { method: "PUT", body: JSON.stringify({ body }) }),
+  draftHistory: (id, uid) => req(`/projects/${id}/nodes/${uid}/draft/history`),
   // 검토
   runReview: (id, uid, kind, provider, perspective) => req(`/projects/${id}/nodes/${uid}/review/run`, { method: "POST", body: JSON.stringify({ kind, provider: provider || null, perspective: perspective || "기관장" }) }),
   runReviewWhole: (id, kind, provider, perspective) => req(`/projects/${id}/review/run`, { method: "POST", body: JSON.stringify({ kind, provider: provider || null, perspective: perspective || "기관장" }) }),
@@ -81,6 +82,8 @@ export const api = {
     { method: "PUT", body: JSON.stringify({ note }) }),
   analyzeResource: (id, rid, provider) => req(`/projects/${id}/resources/${rid}/analyze`, { method: "POST", body: JSON.stringify({ provider: provider || null }) }),
   confirmAnalysis: (id, rid, force = false) => req(`/projects/${id}/resources/${rid}/confirm`, { method: "POST", body: JSON.stringify({ force }) }),
+  // 근거 고리: 분석이 제안한 주장 후보 중 고른 것을 한 번에 근거로(확정 + 목차 연결)
+  adoptClaims: (id, rid, body) => req(`/projects/${id}/resources/${rid}/adopt`, { method: "POST", body: JSON.stringify(body) }),
   // 근거표
   listEvidence: (id) => req(`/projects/${id}/evidence`),
   addEvidence: (id, e) => req(`/projects/${id}/evidence`, { method: "POST", body: JSON.stringify(e) }),

@@ -945,3 +945,29 @@ select.st-need{color:#9A6a1a}select.st-sent{color:#3E5F86}select.st-back{color:#
 .sv-cl input{margin-top:4px;flex:none}
 .sv-cl b{color:var(--ink)}
 .sv-cl.on{opacity:.55}
+
+/* 근거 고리: 주장 후보 · 원문 인용 · 본문 출처 */
+.candbox{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:12px 14px;margin-top:10px}
+.candhead{margin-bottom:8px}
+.cand{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px dashed var(--line);cursor:pointer}
+.cand.done{opacity:.6}
+.cand.bad .candquote{color:#9a3b00}
+.candbody{display:flex;flex-direction:column;gap:2px;min-width:0}
+.candclaim{font-weight:600}
+.candans{font-size:11px;color:var(--muted)}
+.candquote{font-size:12px;color:var(--muted);word-break:break-all}
+.candbar{display:flex;gap:8px;margin:10px 0 6px}
+.candbar>*{flex:1 1 0;min-width:0}
+.qst{display:inline-block;margin-left:6px;font-size:10px;padding:0 5px;border-radius:3px;border:1px solid var(--line)}
+.q-일치{color:#1f6b3a;border-color:#9fd0b0}
+.q-불일치{color:#9a3b00;border-color:#f0b58a;background:#fff6ee}
+.evquote{margin:4px 0}
+.evquote textarea{width:100%;min-height:38px;font-size:12px}
+.provbox{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:10px 12px;margin-top:10px;font-size:12px}
+.provhead{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.provline{padding:3px 0 3px 8px;border-left:3px solid var(--line);margin:3px 0}
+.provtag{display:inline-block;min-width:68px;font-size:10px;color:var(--muted)}
+.pv-ai{color:#5a4fb0}.provline.pv-ai{border-left-color:#b9b2ea}
+.pv-ed{color:#8a6a00}.provline.pv-ed{border-left-color:#e6cf7a}
+.pv-hu{color:#1f6b3a}.provline.pv-hu{border-left-color:#9fd0b0}
+.provhist{margin:4px 0}.provhist summary{cursor:pointer;color:var(--muted)}

@@ -12,6 +12,10 @@
   · 미확정 근거 인용     — 사람이 확정하지 않은 자료를 근거로 달았다                         [중요]
   · 원본이 바뀐 근거     — 인용한 근거에 '근거 자료 변경됨' 신호가 켜져 있다               [중요]
   · 근거 없는 수치 문장  — 양을 말하는 숫자(명·%·원·개소…)가 있는데 근거 번호가 없다      [중요]
+  · 인용이 원문에 없는 근거 — 인용한 근거의 '원문 인용'이 지금의 자료 본문에 그대로 없다     [중요]
+  · 따옴표 안 글이 원문에 없음 — 본문이 “…”로 옮긴 글이 인용한 근거의 원문에 그대로 없다    [중요]
+  (뒤의 둘은 2026-11-24 '근거 고리 닫기'로 더했다 — 숫자가 아닌 사실도 원문과 대조한다.
+   같다고 보는 기준은 services/quote.py 하나다.)
   ([추정]·[확인 필요] 로 스스로 표시한 문장은 '근거 없는 수치'로 짚지 않는다 — 이미 정직하게 표시했다.)
 
 대조하는 '원문'은 **자료 원문(resources.text) + 근거 항목의 주장·위치**다. AI 가 만든 자료 요약은 넣지 않는다 —
@@ -27,6 +31,7 @@ import re
 
 from .evidence import evidence_mark
 from .numbering import evidence_numbers
+from .quote import MIN_LEN, norm, quote_state
 
 # (근거: E-001) · (근거: E-001, E-003) · (근거 : E-1)
 _CITE = re.compile(r"\(\s*근거\s*[:：]\s*([^)]*)\)")
@@ -37,6 +42,9 @@ _QTY_UNIT = re.compile(
     r"^\s*(?:%p|%|퍼센트|명|인|가구|세대|개소|개|곳|건|회|차례|원|천원|만원|억원|조원|만|억|천|조|배|"
     r"㎡|m²|㎢|km|ha|톤|t|kg|대|채|동|호|석|권|시간|분|일간|개월|년간|주간|세)")
 _MARKED = ("[추정", "[확인 필요")
+# 본문이 큰따옴표로 옮긴 글(직접 인용). 작은따옴표는 한국어에서 강조('보이기')에 흔히 써서 보지 않는다.
+# 짧은 것(MIN_LEN 미만)은 어디에나 있어 대조하지 않는다.
+_QUOTED = re.compile(r"[“\"]([^”\"]+)[”\"]")
 _LEVEL_ORDER = {"중대": 0, "중요": 1, "참고": 2}
 
 
@@ -96,17 +104,23 @@ def evidence_index(c, pid: int) -> dict[str, dict]:
         no = nos.get(d["id"])
         if not no:
             continue
-        src = [d.get("claim") or "", d.get("locator") or ""]
+        src = [d.get("claim") or "", d.get("locator") or "", d.get("quote") or ""]
         d["resource_kind"], d["state"] = "", ""
+        body = ""
         if d.get("resource_id"):
             r = c.execute("SELECT kind,text FROM resources WHERE id=?", (d["resource_id"],)).fetchone()
             a = c.execute("SELECT state FROM resource_analysis WHERE resource_id=?", (d["resource_id"],)).fetchone()
             if r:
                 d["resource_kind"] = r["kind"]
-                src.append(r["text"] or "")
+                body = r["text"] or ""
+                src.append(body)
             d["state"] = a["state"] if a else "분석 전"
+        # 근거의 인용은 '자료 본문'과만 대조한다(주장·위치는 사람이 쓴 말이라 인용의 출처가 될 수 없다).
+        # 본문의 따옴표 글(plain)은 주장·위치·인용·원문 전체와 견준다.
         out[no] = {"mark": evidence_mark(d), "source_changed": bool(d.get("source_changed")),
-                   "nums": {n for _, n, _ in numbers_in("\n".join(src))}, "claim": d.get("claim") or ""}
+                   "nums": {n for _, n, _ in numbers_in("\n".join(src))}, "claim": d.get("claim") or "",
+                   "quote_state": quote_state(d.get("quote") or "", body) if d.get("resource_id") else "없음",
+                   "plain": norm("\n".join(src))}
     return out
 
 
@@ -157,9 +171,22 @@ def _check_sentence(sent: str, cited: list[str], borrowed: list[str], index: dic
         if ev["source_changed"]:
             found.append(_f("중요", "원본이 바뀐 근거 인용", sent,
                             f"{no} 의 자료가 수정됐습니다. 이 문장이 아직 맞는지 원문을 다시 보세요.", ev=no))
+        if ev.get("quote_state") == "불일치":
+            found.append(_f("중요", "인용이 원문에 없는 근거", sent,
+                            f"{no} 의 '원문 인용'을 자료 본문에서 그대로 찾지 못했습니다. "
+                            "근거표에서 인용을 원문대로 고치세요.", ev=no))
 
     known += [(no, index[no]) for no in borrowed if no in index]
     if known:
+        pool_text = "".join(ev.get("plain", "") for _, ev in known)
+        for m in _QUOTED.finditer(body):
+            q = norm(m.group(1))
+            if len(q) >= MIN_LEN and q not in pool_text:
+                nos = ", ".join(no for no, _ in known)
+                found.append(_f("중요", "따옴표 안 글이 원문에 없음", sent,
+                                f"‘{m.group(1)[:40]}’ 를 {nos} 의 원문에서 그대로 찾지 못했습니다. "
+                                "따옴표는 원문을 그대로 옮겼다는 뜻입니다 — 원문대로 고치거나 따옴표를 빼세요.",
+                                ev=nos))
         pool = set().union(*(ev["nums"] for _, ev in known))
         missing = list(dict.fromkeys(tok for tok, n, _ in nums if n not in pool))
         if missing:                              # 한 문장에 의견 하나 — 숫자마다 따로 내면 시끄럽다

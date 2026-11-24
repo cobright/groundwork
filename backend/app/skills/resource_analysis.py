@@ -20,7 +20,12 @@ SYSTEM = (
     '{"summary": "핵심 요약 2~3문장", '
     '"key_points": ["자료의 주요 내용·수치 항목", "..."], '
     '"usable_for": ["이 자료로 뒷받침할 수 있는 주장이나 활용 가능한 목차", "..."], '
-    '"cautions": ["기준연도·출처·확정 여부 등 주의사항", "..."]}'
+    '"cautions": ["기준연도·출처·확정 여부 등 주의사항", "..."], '
+    '"claims": [{"claim": "이 자료로 세울 수 있는 주장 한 문장", '
+    '"quote": "그 주장을 받치는 자료 본문 구간(글자 그대로)", "answers": "답하는 요청 항목(없으면 빈 글자)"}]}\n'
+    "claims 규칙: 최대 8개. quote 는 자료 본문에서 **한 글자도 바꾸지 말고** 복사한 한두 문장 또는 표 한 줄입니다"
+    "(요약·의역·줄임표 금지). 본문에서 그대로 옮길 구간이 없으면 그 주장은 내놓지 마십시오. "
+    "claim 은 quote 에 있는 사실만 말합니다."
 )
 
 # 부서 회신 자료일 때 덧붙이는 규칙.
@@ -33,7 +38,8 @@ ASKED_RULE = (
     "- 답이 있으면 key_points 맨 앞에 '요청한 ○○: (자료에 적힌 값 그대로)' 로 적습니다.\n"
     "- 답이 없으면 cautions 맨 앞에 '요청한 ○○은(는) 이 자료에 없습니다 — 추가 요청 필요' 로 적습니다. "
     "비슷해 보이는 다른 수치로 대신하거나 채워 넣지 마십시오.\n"
-    "- 요청하지 않았지만 문서를 쓸 때 쓸모 있어 보이는 내용은 usable_for 에 적습니다."
+    "- 요청하지 않았지만 문서를 쓸 때 쓸모 있어 보이는 내용은 usable_for 에 적습니다.\n"
+    "- 요청한 항목에 답하는 claims 를 먼저 내고, answers 에 그 요청 항목을 적습니다."
 )
 
 
@@ -65,8 +71,9 @@ def analyze_resource(name: str, kind: str, source_org: str, base_date: str, text
         body = body[:12000] + "\n...(이하 생략)"
     user = f"{meta}\n\n[자료 본문]\n{body}\n\n위 자료를 분석해 지정된 JSON 으로만 답하십시오."
     system = SYSTEM + (ASKED_RULE if asked.strip() else "")
+    # 주장 후보(인용 포함)가 붙어 출력이 길어졌다 — 1500 이면 JSON 이 잘려 통째로 못 읽는다.
     raw = provider.complete([Message("system", system), Message("user", user)],
-                            temperature=0.1, max_tokens=1500)
+                            temperature=0.1, max_tokens=2600)
     data = _parse_json(raw)
     # 스키마 방어: 누락 필드 채우고 타입 보정
     return {
@@ -74,8 +81,24 @@ def analyze_resource(name: str, kind: str, source_org: str, base_date: str, text
         "key_points": _as_list(data.get("key_points")),
         "usable_for": _as_list(data.get("usable_for")),
         "cautions": _as_list(data.get("cautions")),
+        "claims": _as_claims(data.get("claims")),
         "model": getattr(provider, "model", provider.name),
     }
+
+
+def _as_claims(v) -> list[dict]:
+    """주장 후보를 {claim, quote, answers} 로 고른다. 인용이 원문에 있는지는 여기서 보지 않는다 —
+    자료 본문이 나중에 바뀔 수 있으므로 읽을 때마다 `services/quote.py` 로 다시 본다."""
+    out = []
+    for x in v if isinstance(v, list) else []:
+        if not isinstance(x, dict):
+            continue
+        claim = str(x.get("claim") or "").strip()
+        if not claim:
+            continue
+        out.append({"claim": claim[:300], "quote": str(x.get("quote") or "").strip()[:600],
+                    "answers": str(x.get("answers") or "").strip()[:120]})
+    return out[:8]
 
 
 def _parse_json(raw: str) -> dict:

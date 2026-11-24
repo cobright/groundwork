@@ -117,9 +117,9 @@ def adopt_statement(pid: int, rid: int, body: AdoptIn):
         made = []
         for x in picked:
             cur = c.execute(
-                "INSERT INTO evidence(project_id,claim,resource_id,locator,trust,status,node_uid,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?)",
-                (pid, x.claim.strip(), rid, (x.quote or "").strip()[:200],
+                "INSERT INTO evidence(project_id,claim,resource_id,locator,quote,trust,status,node_uid,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (pid, x.claim.strip(), rid, (x.quote or "").strip()[:200], (x.quote or "").strip(),
                  "진술", STATEMENT_STATUS if not x.opinion else "추정",
                  body.node_uid, now()),
             )

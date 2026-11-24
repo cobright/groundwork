@@ -69,7 +69,7 @@ def test_근거_부록은_본문의_번호를_찾아가게_한다(client, plan):
     _, doc = _export(client, plan)
     assert "[부록] 근거표" in _texts(doc)
     rows = [[c.text for c in row.cells] for row in doc.tables[0].rows]
-    assert rows[0] == ["번호", "주장·판단", "근거자료", "위치", "상태"]
+    assert rows[0] == ["번호", "주장·판단", "근거자료", "위치·원문 인용", "상태"]
     assert rows[1][:4] == ["E-001", "노인 인구가 늘었다", "인구 통계", "표 1"]   # 미확정이라 ✔ 없음
 
 

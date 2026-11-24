@@ -168,10 +168,15 @@ def _fmt_evidence(evidences: list[dict]) -> str:
         src = (e.get("resource_name") or "근거 없음").strip()
         loc = (e.get("locator") or "").strip()
         summary = (e.get("resource_summary") or "").strip()
-        line = f"{tag} [{mark}] 주장: {claim} / 근거자료: {src}{(' ' + loc) if loc else ''}"
-        # 진술은 요약이 진술문 전체라 근거마다 통째로 반복된다. 인용(locator)이 이미
-        # 정확한 출처이므로 요약은 붙이지 않는다.
-        if summary and mark != "진술":
-            line += f"\n     자료요약: {summary}"
+        quote = (e.get("quote") or "").strip()
+        line = f"{tag} [{mark}] 주장: {claim} / 근거자료: {src}{(' ' + loc) if loc and loc != quote else ''}"
+        # 근거 고리(2026-11-24): 초고는 AI 요약이 아니라 **원문 인용 구간**을 받는다.
+        # 요약이 틀리면 초고가 그 틀린 숫자를 옮기고, 점검기도 요약은 대조하지 않으므로 못 잡는다.
+        # 인용이 없는 옛 근거만 요약을 넘기되, 요약이라고 밝힌다(원문처럼 쓰지 않게).
+        # 진술은 요약이 진술문 전체라 근거마다 통째로 반복되므로 붙이지 않는다.
+        if quote:
+            line += f"\n     원문 인용: “{quote}”"
+        elif summary and mark != "진술":
+            line += f"\n     자료요약(AI 요약 — 원문 아님): {summary}"
         lines.append(line)
     return "\n".join(lines)
