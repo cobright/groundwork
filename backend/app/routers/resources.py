@@ -5,7 +5,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 from ..db import connect, now
-from ..skills.resource_analysis import analyze_resource
+from ..skills.resource_analysis import analyze_resource, asked_missing
 from ..services.attachments import MAX_BYTES, file_meta, read_upload, store_file
 from ..services.doc_read import ReadError
 from ..services.numbering import attach_evidence_no
@@ -31,14 +31,21 @@ def _require(c, pid):
 
 def _analysis_dict(row):
     if not row:
-        return {"state": "분석 전"}
+        return {"state": "분석 전", "asked_missing": []}
     d = dict(row)
     for k in ("key_points", "usable_for", "cautions"):
         try:
             d[k] = json.loads(d[k])
         except Exception:
             d[k] = []
+    d["asked_missing"] = asked_missing(d["cautions"])     # 요청했는데 회신에 없는 것
     return d
+
+
+def _reply_of(c, rid: int):
+    """이 자료가 어떤 자료요청의 회신인지(있으면). 화면이 '재요청으로 되돌리기'를 보일지 정한다."""
+    r = c.execute("SELECT id, need, status FROM data_requests WHERE received_resource_id=?", (rid,)).fetchone()
+    return dict(r) if r else None
 
 
 @router.get("/{pid}/resources")
@@ -55,7 +62,7 @@ def list_resources(pid: int):
         for r in own:
             a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (r["id"],)).fetchone()
             item = dict(r); item["analysis"] = _analysis_dict(a); item["source"] = "own"
-            item["file"] = files.get(r["id"])
+            item["file"] = files.get(r["id"]); item["reply_of"] = _reply_of(c, r["id"])
             out.append(item)
         for r in refs:
             a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (r["id"],)).fetchone()
@@ -297,14 +304,26 @@ def analyze(pid: int, rid: int, body: AnalyzeIn):
     return _analysis_dict(a)
 
 
+class ConfirmIn(BaseModel):
+    force: bool = False      # '요청한 것이 이 자료에 없다'는 경고를 보고도 확정한다
+
+
 @router.post("/{pid}/resources/{rid}/confirm")
-def confirm_analysis(pid: int, rid: int):
-    """사용자 확정: 이때부터 근거표에서 이 자료를 공식 근거로 쓸 수 있다."""
+def confirm_analysis(pid: int, rid: int, body: ConfirmIn | None = None):
+    """사용자 확정: 이때부터 근거표에서 이 자료를 공식 근거로 쓸 수 있다.
+
+    회신 자료가 요청과 다르면(분석이 '요청한 ○○은 이 자료에 없습니다'라고 했으면) 한 번 묻는다 —
+    막지는 않는다(요청과 달라도 쓸모 있는 자료일 수 있다). 판단은 사람이 한다(원칙 1)."""
     with connect() as c:
         _require(c, pid)
         a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()
         if not a:
             raise HTTPException(400, "먼저 AI 분석을 실행하세요.")
+        missing = _analysis_dict(a)["asked_missing"]
+        if missing and not (body and body.force):
+            raise HTTPException(409, f"요청한 것 {len(missing)}가지가 이 회신 자료에 없습니다 — "
+                                     + " / ".join(missing[:3])
+                                     + ". 그래도 확정하시겠습니까? 다른 파일이 왔다면 ‘재요청으로 되돌리기’를 쓰세요.")
         c.execute("UPDATE resource_analysis SET state='사용자 확정' WHERE resource_id=?", (rid,))
         a = c.execute("SELECT * FROM resource_analysis WHERE resource_id=?", (rid,)).fetchone()
     return _analysis_dict(a)

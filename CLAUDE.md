@@ -315,6 +315,9 @@ data_requests, settings`.
   **기능에 묶인 옛 이름은 바꾸지 않는다**: 보고 파일 `type: workbench-progress-report`(이전 판과 주고받기), `workbench.db`(기존 설치), `wb.cols.*`.
 - 문서 유형 이름을 바꾸면 `services/templates.py` 의 `RENAMED_TYPES` 에 옛 이름을 남긴다 — `_migrate()` 가 기존 업무의 `doc_type` 을 옮긴다.
 - 업무 캐비넷은 '보관/보관함'(`archived`)이다. '보류'는 이미 여러 뜻으로 쓰인다.
+- 회신이 요청과 다른지는 `resource_analysis.asked_missing()` 하나로 가른다(`ASKED_RULE` 의 "이 자료에 없습니다" 문구 — 문구를 바꾸면 함께).
+  그런 자료의 확정은 막지 않고 묻는다(`confirm` 이 `force` 없이 409). 되돌리기는 `POST /requests/{rid}/reopen` — 자료는 지우지 않고 `[요청과 다름]` 이름표.
+- 근거를 자리표시 글자로 만들지 않는다(예전 '새 주장'). 빈 주장·'새 주장'은 최종본 점검이 짚는다.
 - 같은 뜻의 메모 칸을 늘리지 않는다 — 저장은 한 곳, 문만 여럿(회신 등록 뒤엔 `resources.note` 를 띄우고 `PUT /resources/{rid}/note` 로 저장).
 - 가리키는 대상이 사라질 수 있는 열은 읽는 쪽에서 확인한다(`received_resource_id` → `received_lost`).
 - 목록을 `SELECT *` 로 읽는 표에 BLOB 컬럼을 넣지 않는다(딴 표 + `file_meta()`).

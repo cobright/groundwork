@@ -247,6 +247,41 @@ async def register_received_file(pid: int, rid: int, request: Request, filename:
             "chars": len(info["text"]), "read_note": info["read_note"]}
 
 
+MISMATCH_TAG = "[요청과 다름] "
+
+
+class ReopenIn(BaseModel):
+    reason: str = ""
+
+
+@router.post("/{pid}/requests/{rid}/reopen")
+def reopen_request(pid: int, rid: int, body: ReopenIn | None = None):
+    """회신이 요청과 달랐다 — 요청을 다시 '요청함'으로 돌리고, 받은 자료와의 연결을 끊는다.
+
+    2026-11-24 실제 업무(#6)에서 요청과 전혀 다른 파일이 회신으로 등록돼 '회신옴'으로 남았고,
+    그 자료가 요청 문구를 이름으로 단 채 근거로 확정됐다. 이제 그 자리에서 되돌린다.
+    받은 자료는 지우지 않는다(요청과 달라도 쓸모 있을 수 있다). 다만 이름이 요청 문구라서
+    근거표·부록에서 '요청한 자료를 받았다'고 읽히므로 이름 앞에 [요청과 다름] 을 붙인다.
+    경위는 회신 메모에 남긴다(무엇을 받았다가 되돌렸는지 사람이 알아야 다시 요청한다)."""
+    reason = ((body.reason if body else "") or "").strip()
+    with connect() as c:
+        _require(c, pid)
+        r = c.execute("SELECT * FROM data_requests WHERE id=? AND project_id=?", (rid, pid)).fetchone()
+        if not r:
+            raise HTTPException(404, "요청 항목을 찾을 수 없습니다.")
+        old = r["received_resource_id"]
+        got = c.execute("SELECT id, name FROM resources WHERE id=?", (old,)).fetchone() if old else None
+        if got and not got["name"].startswith(MISMATCH_TAG):
+            c.execute("UPDATE resources SET name=? WHERE id=?", (MISMATCH_TAG + got["name"], got["id"]))
+        line = f"[{_today()}] 회신이 요청과 달라 재요청" + (f" — {reason}" if reason else "") \
+               + (f" (받았던 자료: {got['name']})" if got else "")
+        note = ((r["received_note"] or "").rstrip() + "\n" + line).strip()
+        c.execute("UPDATE data_requests SET status='요청함', received_resource_id=NULL, received_note=? WHERE id=?",
+                  (note, rid))
+        item = _request_item(c, pid, rid)
+    return item
+
+
 @router.delete("/{pid}/requests/{rid}")
 def delete_request(pid: int, rid: int):
     with connect() as c:

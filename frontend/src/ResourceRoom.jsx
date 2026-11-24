@@ -105,7 +105,23 @@ export default function ResourceRoom({ pid }) {
     catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   }
-  async function confirmA() { await api.confirmAnalysis(pid, sel.id); await reload(); }
+  async function confirmA() {
+    // 회신이 요청과 다르면(분석이 '요청한 ○○은 이 자료에 없습니다') 한 번 묻는다. 막지는 않는다 — 판단은 사람이.
+    const miss = arr(sel.analysis?.asked_missing);
+    const ask = `요청한 것 ${miss.length}가지가 이 회신 자료에 없습니다.\n\n${miss.join("\n")}\n\n`
+      + "그래도 이 자료를 근거로 확정할까요?\n(다른 파일이 왔다면 ‘취소’ 후 ‘재요청으로 되돌리기’를 누르세요)";
+    if (miss.length && !confirm(ask)) return;
+    try { await api.confirmAnalysis(pid, sel.id, miss.length > 0); await reload(); }
+    catch (e) { setErr(String(e.message || e)); }
+  }
+  async function reopenRequest() {
+    const rq = sel?.reply_of; if (!rq) return;
+    const reason = prompt(`‘${rq.need}’ 요청을 다시 ‘요청함’으로 돌립니다.\n`
+      + "받은 자료는 지우지 않고 이름 앞에 [요청과 다름]을 붙입니다.\n\n되돌리는 이유(선택):", "받은 파일이 요청한 자료가 아님");
+    if (reason === null) return;
+    try { await api.reopenRequest(pid, rq.id, reason); await reload(); }
+    catch (e) { setErr(String(e.message || e)); }
+  }
 
   // ── 담당자 진술 ──
   // AI는 '쪼개기'만 한다(없는 사실을 채우지 않는다). 근거가 되는 것은 사람이 고른 것뿐이다.
@@ -137,7 +153,8 @@ export default function ResourceRoom({ pid }) {
   }
 
   async function addEvidenceRow() {
-    const e = await api.addEvidence(pid, { claim: "새 주장", resource_id: null, status: "확인 필요" });
+    // 빈 주장으로 만든다. 예전엔 '새 주장'을 실제 값으로 넣어, 고치지 않으면 최종본 부록에 그대로 나갔다(2026-11-24 #6).
+    const e = await api.addEvidence(pid, { claim: "", resource_id: null, status: "확인 필요" });
     setEvidence((v) => [...v, e]);
   }
   async function patchEvidence(row, patch) {
@@ -339,11 +356,21 @@ export default function ResourceRoom({ pid }) {
               <select value={provider} onChange={(e) => setProvider(e.target.value)}>{PROVIDERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
               <button className="btn primary" disabled={busy} onClick={runAnalyze}>{busy ? "분석 중…" : (sel.analysis?.state === "재분석 필요" ? "다시 분석" : "AI 분석")}</button>
               {(sel.analysis?.state === "분석 완료" || sel.analysis?.state === "재분석 필요") && <button className="btn" onClick={confirmA}>분석 확정</button>}
+              {sel.reply_of?.status === "회신옴" && arr(sel.analysis?.asked_missing).length > 0 &&
+                <button className="btn ghost stamp" onClick={reopenRequest}>재요청으로 되돌리기</button>}
               {sel.analysis?.state === "사용자 확정" && <span className="confirmed">✔ 사용자 확정됨 — 근거로 사용 가능</span>}
               {sel.analysis?.state === "재분석 필요" && <span className="warn">자료가 수정되어 재분석이 필요합니다.</span>}
               </>)}
             </div>
 
+            {arr(sel.analysis?.asked_missing).length > 0 && (
+              <div className="warnbox">
+                <b>이 회신에는 요청한 것이 없습니다({arr(sel.analysis.asked_missing).length}가지).</b>
+                {sel.reply_of && <> 요청: ‘{sel.reply_of.need}’</>}
+                <ul style={{ margin: "6px 0 6px 18px" }}>{arr(sel.analysis.asked_missing).map((x, i) => <li key={i}>{x}</li>)}</ul>
+                다른 파일이 왔다면 <b>재요청으로 되돌리기</b>를 누르세요. 그대로 확정하면 최종본 부록에 요청 이름으로 보입니다.
+              </div>
+            )}
             {sel.analysis?.summary && (
               <div className={"apanel" + (sel.analysis.state === "재분석 필요" ? " stale" : "")}>
                 {sel.analysis.state === "재분석 필요" && <div className="staleflag">아래는 수정 전 분석입니다. ‘다시 분석’으로 갱신하세요.</div>}
@@ -371,7 +398,7 @@ export default function ResourceRoom({ pid }) {
                     <button className="ackbtn" title="자료 원문을 다시 보고 이 근거가 아직 유효한지 확인했다면 누르세요" onClick={() => ackEvidence(row)}>확인함</button>
                   </span>
                 : null}</div>
-            <textarea className="evclaim" value={row.claim} onChange={(e) => patchEvidence(row, { claim: e.target.value })} placeholder="주장·판단" />
+            <textarea className="evclaim" value={row.claim} onChange={(e) => patchEvidence(row, { claim: e.target.value })} placeholder="주장·판단을 한 줄로 — 예: 65세 이상 인구가 3년간 늘었다 (최종본 부록에 그대로 나갑니다)" />
             <div className="evrow">
               <select value={row.resource_id || ""} onChange={(e) => patchEvidence(row, { resource_id: e.target.value ? +e.target.value : null })}>
                 <option value="">근거 없음</option>

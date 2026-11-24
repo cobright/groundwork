@@ -7,9 +7,14 @@
 """
 from __future__ import annotations
 import io
+import json
+import re
 from ..db import connect
 from .numbering import evidence_numbers, sections_with_body
 from .evidence import STATEMENT_KIND
+
+# 비어 있거나 '+ 근거 추가'의 옛 자리표시('새 주장', '새 주장1')가 그대로인 주장
+_PLACEHOLDER = re.compile(r"^(새 주장\d*)?$")
 
 
 def _evidence_rows(c, pid):
@@ -275,6 +280,29 @@ def final_check(pid) -> dict:
         # 근거 점검기(규칙): 본문의 숫자·근거 번호를 근거 원문과 대조한 의견
         from .evidence_check import check_project
         ev_found = check_project(c, pid)
+        # 2026-11-24 실제 업무(#6)에서 드러난 세 가지 — 부록이 사실과 다르게 읽히는 자리
+        nos = evidence_numbers(c, pid)
+        evs = [dict(r) for r in c.execute("SELECT * FROM evidence WHERE project_id=? ORDER BY id", (pid,))]
+        # ① 주장이 비었거나 '+ 근거 추가'의 옛 자리표시('새 주장')가 그대로인 근거
+        blank_claims = [nos.get(e["id"], "") for e in evs if _PLACEHOLDER.match((e["claim"] or "").strip())]
+        # ② 요청과 다른 회신을 근거로 씀(분석이 '요청한 ○○은 이 자료에 없습니다'라고 한 자료)
+        from ..skills.resource_analysis import asked_missing
+        mismatched = []
+        for e in evs:
+            if not e["resource_id"]:
+                continue
+            a = c.execute("SELECT cautions FROM resource_analysis WHERE resource_id=?", (e["resource_id"],)).fetchone()
+            try:
+                miss = asked_missing(json.loads(a["cautions"])) if a else []
+            except ValueError:
+                miss = []
+            if miss:
+                r = c.execute("SELECT name FROM resources WHERE id=?", (e["resource_id"],)).fetchone()
+                mismatched.append(f"{nos.get(e['id'], '')} {(r['name'] if r else '')[:40]} — 요청한 것 {len(miss)}가지 없음")
+        # ③ '회신옴'인데 받은 자료가 지워진 요청(요청 대장이 받지 않은 것을 받았다고 말한다)
+        lost = [r["need"][:50] for r in c.execute(
+            "SELECT need FROM data_requests WHERE project_id=? AND status='회신옴' AND received_resource_id IS NOT NULL "
+            "AND received_resource_id NOT IN (SELECT id FROM resources)", (pid,))]
 
     empty = [f"{s['number']} {s['title']}" for s in sections if not (s["body"] or "").strip()]
     flagged = [f"{s['number']} {s['title']}" for s in sections
@@ -298,6 +326,16 @@ def final_check(pid) -> dict:
                       "detail": [f"[{o['kind']}] {o['problem'][:40]}" for o in dropped_no_reason]})
     if changed:
         items.append({"level": "중요", "label": "근거 자료가 변경된 근거 항목", "detail": [f"{changed}건 — 근거표에서 확인 필요"]})
+    if mismatched:
+        items.append({"level": "중요", "label": "요청과 다른 회신을 근거로 씀",
+                      "detail": mismatched + ["부록에는 요청 이름으로 보입니다 — 맞는 자료를 다시 받거나, 근거를 바꾸세요"]})
+    if blank_claims:
+        items.append({"level": "중요", "label": "주장이 비어 있는 근거",
+                      "detail": [f"{n or '(번호 없음)'} — 근거표에서 주장 칸을 채우세요(부록에 그대로 나갑니다)"
+                                 for n in blank_claims]})
+    if lost:
+        items.append({"level": "참고", "label": "회신 자료가 지워진 자료요청",
+                      "detail": [f"{x} — 상태는 '회신옴'이지만 받은 자료가 없습니다" for x in lost]})
     # 근거 점검기 — 종류별로 묶어 보인다. 막지는 않지만(사람이 판단) '중대·중요'는 준비 안 됨으로 센다.
     for kind in dict.fromkeys(f["kind"] for f in ev_found):
         group = [f for f in ev_found if f["kind"] == kind]

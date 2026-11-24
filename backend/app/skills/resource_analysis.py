@@ -37,6 +37,19 @@ ASKED_RULE = (
 )
 
 
+# ASKED_RULE 이 정한 문구. 이 글자로 '요청한 것이 회신에 없다'를 알아본다(문구를 바꾸면 여기도 함께).
+MISSING_MARK = "이 자료에 없습니다"
+
+
+def asked_missing(cautions) -> list[str]:
+    """분석 주의사항 중 '요청한 ○○은(는) 이 자료에 없습니다' 줄만. 회신이 요청과 다른지 가르는 데 쓴다.
+
+    2026-11-24 실제 업무(#6)에서 요청과 전혀 다른 파일이 회신으로 등록됐다. AI 는 이 문구로 정확히
+    알렸지만 주의사항 목록의 한 줄에 묻혀 그대로 확정되고, 최종본 부록에 요청 이름으로 ✔ 가 찍혔다.
+    """
+    return [c for c in (cautions or []) if isinstance(c, str) and c.startswith("요청한") and MISSING_MARK in c]
+
+
 def analyze_resource(name: str, kind: str, source_org: str, base_date: str, text: str,
                      provider_name: str | None = None, asked: str = "") -> dict:
     """자료 한 건을 분석해 구조화된 dict 를 돌려준다. 확정은 하지 않는다(사용자 몫).

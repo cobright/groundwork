@@ -80,7 +80,7 @@ export const api = {
   setResourceNote: (id, rid, note) => req(`/projects/${id}/resources/${rid}/note`,
     { method: "PUT", body: JSON.stringify({ note }) }),
   analyzeResource: (id, rid, provider) => req(`/projects/${id}/resources/${rid}/analyze`, { method: "POST", body: JSON.stringify({ provider: provider || null }) }),
-  confirmAnalysis: (id, rid) => req(`/projects/${id}/resources/${rid}/confirm`, { method: "POST", body: "{}" }),
+  confirmAnalysis: (id, rid, force = false) => req(`/projects/${id}/resources/${rid}/confirm`, { method: "POST", body: JSON.stringify({ force }) }),
   // 근거표
   listEvidence: (id) => req(`/projects/${id}/evidence`),
   addEvidence: (id, e) => req(`/projects/${id}/evidence`, { method: "POST", body: JSON.stringify(e) }),
@@ -149,6 +149,7 @@ export const api = {
   listRequests: (pid) => req(`/projects/${pid}/requests`),
   collectRequests: (pid) => req(`/projects/${pid}/requests/collect`, { method: "POST", body: "{}" }),
   addRequest: (pid, body) => req(`/projects/${pid}/requests`, { method: "POST", body: JSON.stringify(body) }),
+  reopenRequest: (pid, rid, reason) => req(`/projects/${pid}/requests/${rid}/reopen`, { method: "POST", body: JSON.stringify({ reason: reason || "" }) }),
   updateRequest: (pid, rid, patch) => req(`/projects/${pid}/requests/${rid}`, { method: "PUT", body: JSON.stringify(patch) }),
   deleteRequest: (pid, rid) => req(`/projects/${pid}/requests/${rid}`, { method: "DELETE" }),
   requestsXlsxUrl: (pid) => `/api/projects/${pid}/requests/export.xlsx`,
